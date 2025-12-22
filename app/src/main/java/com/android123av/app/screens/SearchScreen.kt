@@ -1,4 +1,4 @@
-package com.app.myapplication.screens
+package com.android123av.app.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,9 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.app.myapplication.components.VideoItem
-import com.app.myapplication.models.Video
-import com.app.myapplication.network.searchVideos
+import com.android123av.app.components.VideoItem
+import com.android123av.app.models.Video
+import com.android123av.app.network.searchVideos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -105,3 +105,5 @@ fun SearchScreen(
         }
     }
 }
+
+

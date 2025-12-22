@@ -1,4 +1,4 @@
-package com.app.myapplication
+package com.android123av.app
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
@@ -20,3 +20,5 @@ enum class AppDestinations(
     VIDEO_PLAYER("视频播放", Icons.Default.PlayArrow),
     LOGIN("登录", Icons.Default.AccountBox)
 }
+
+

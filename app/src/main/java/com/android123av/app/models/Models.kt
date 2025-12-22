@@ -1,4 +1,4 @@
-package com.app.myapplication.models
+package com.android123av.app.models
 
 import android.os.Parcel
 import android.os.Parcelable
@@ -88,3 +88,6 @@ data class PaginationInfo(
     val hasNextPage: Boolean,
     val hasPrevPage: Boolean
 )
+
+
+

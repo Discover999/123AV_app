@@ -1,8 +1,8 @@
-package com.app.myapplication.state
+package com.android123av.app.state
 
 import androidx.compose.runtime.*
-import com.app.myapplication.models.User
-import com.app.myapplication.network.login
+import com.android123av.app.models.User
+import com.android123av.app.network.login
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -64,3 +64,5 @@ fun rememberUserState(): UserState {
         UserState()
     }
 }
+
+

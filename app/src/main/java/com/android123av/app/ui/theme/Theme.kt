@@ -1,4 +1,4 @@
-package com.app.myapplication.ui.theme
+package com.android123av.app.ui.theme
 
 import android.app.Activity
 import android.os.Build
@@ -56,3 +56,5 @@ fun MyApplicationTheme(
         content = content
     )
 }
+
+

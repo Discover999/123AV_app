@@ -1,4 +1,4 @@
-package com.app.myapplication.screens
+package com.android123av.app.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -31,9 +31,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import android.widget.Toast
-import com.app.myapplication.models.Video
-import com.app.myapplication.network.fetchVideoUrl
-import com.app.myapplication.network.fetchM3u8UrlWithWebView
+import com.android123av.app.models.Video
+import com.android123av.app.network.fetchVideoUrl
+import com.android123av.app.network.fetchM3u8UrlWithWebView
 
 // 视频播放器屏幕
 @Composable
@@ -169,3 +169,5 @@ fun createMediaSource(url: String): MediaSource {
             .createMediaSource(MediaItem.fromUri(url))
     }
 }
+
+

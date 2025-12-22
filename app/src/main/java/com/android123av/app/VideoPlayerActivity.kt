@@ -1,4 +1,4 @@
-package com.app.myapplication
+package com.android123av.app
 
 import android.content.Intent
 import android.os.Bundle
@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import com.app.myapplication.models.Video
-import com.app.myapplication.screens.VideoPlayerScreen
-import com.app.myapplication.ui.theme.MyApplicationTheme
+import com.android123av.app.models.Video
+import com.android123av.app.screens.VideoPlayerScreen
+import com.android123av.app.ui.theme.MyApplicationTheme
 
 class VideoPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,3 +38,6 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
 }
+
+
+

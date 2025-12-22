@@ -1,4 +1,4 @@
-package com.app.myapplication.components
+package com.android123av.app.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,8 +19,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.R
-import com.app.myapplication.models.RequestInfo
-import com.app.myapplication.models.Video
+import com.android123av.app.models.RequestInfo
+import com.android123av.app.models.Video
 import coil.compose.AsyncImage
 
 // 请求信息显示组件
@@ -191,3 +191,6 @@ fun CategoryTabs(
         }
     }
 }
+
+
+

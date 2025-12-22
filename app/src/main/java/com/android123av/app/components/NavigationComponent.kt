@@ -1,8 +1,8 @@
-package com.app.myapplication.components
+package com.android123av.app.components
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import com.app.myapplication.AppDestinations
+import com.android123av.app.AppDestinations
 
 // 导航栏组件
 @Composable
@@ -23,3 +23,6 @@ fun AppNavigationBar(
         }
     }
 }
+
+
+

@@ -1,4 +1,4 @@
-package com.app.myapplication.screens
+package com.android123av.app.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -10,8 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.app.myapplication.components.VideoItem
-import com.app.myapplication.models.Video
+import com.android123av.app.components.VideoItem
+import com.android123av.app.models.Video
 
 // 收藏夹屏幕
 @Composable
@@ -108,3 +108,5 @@ fun FavoritesScreen(
         )
     }
 }
+
+

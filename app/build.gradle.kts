@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.app.myapplication"
+    namespace = "com.android123av.app"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.app.myapplication"
+        applicationId = "com.android123av.app"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

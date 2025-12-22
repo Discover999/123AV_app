@@ -1,4 +1,4 @@
-package com.app.myapplication.video
+package com.android123av.app.video
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -28,10 +28,10 @@ import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import com.app.myapplication.models.Video
-import com.app.myapplication.network.fetchM3u8UrlWithWebView
-import com.app.myapplication.network.fetchVideoUrl
-import com.app.myapplication.network.okHttpClient
+import com.android123av.app.models.Video
+import com.android123av.app.network.fetchM3u8UrlWithWebView
+import com.android123av.app.network.fetchVideoUrl
+import com.android123av.app.network.okHttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -386,3 +386,5 @@ fun VideoPlayerScreen(
         }
     )
 }
+
+

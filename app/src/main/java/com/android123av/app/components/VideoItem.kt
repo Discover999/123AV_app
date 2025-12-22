@@ -1,4 +1,4 @@
-package com.app.myapplication.components
+package com.android123av.app.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,7 +12,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.app.myapplication.models.Video
+import com.android123av.app.models.Video
 
 // 视频列表项组件
 @Composable
@@ -58,3 +58,5 @@ fun VideoItem(
         }
     }
 }
+
+

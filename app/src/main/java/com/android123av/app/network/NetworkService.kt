@@ -1,4 +1,4 @@
-package com.app.myapplication.network
+package com.android123av.app.network
 
 import android.app.Activity
 import android.webkit.WebResourceRequest
@@ -9,7 +9,7 @@ import android.webkit.WebViewClient
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import com.app.myapplication.models.*
+import com.android123av.app.models.*
 import com.google.gson.Gson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -436,3 +436,5 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
         hasPrevPage = hasPrevPage || currentPage > 1
     )
 }
+
+

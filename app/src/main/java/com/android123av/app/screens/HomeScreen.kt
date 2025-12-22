@@ -1,4 +1,4 @@
-package com.app.myapplication.screens
+package com.android123av.app.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.CircularProgressIndicator
@@ -11,11 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import com.app.myapplication.components.VideoItem
-import com.app.myapplication.components.CategoryTabs
-import com.app.myapplication.models.Video
-import com.app.myapplication.network.fetchVideosDataWithResponse
-import com.app.myapplication.network.parseVideosFromHtml
+import com.android123av.app.components.VideoItem
+import com.android123av.app.components.CategoryTabs
+import com.android123av.app.models.Video
+import com.android123av.app.network.fetchVideosDataWithResponse
+import com.android123av.app.network.parseVideosFromHtml
 
 // 首页屏幕
 @Composable
@@ -117,3 +117,5 @@ fun HomeScreen(
         }
     }
 }
+
+

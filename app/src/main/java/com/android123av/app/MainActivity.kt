@@ -1,4 +1,4 @@
-package com.app.myapplication
+package com.android123av.app
 
 import android.content.Intent
 import android.os.Bundle
@@ -8,34 +8,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
-import com.app.myapplication.models.User
-import com.app.myapplication.components.AppNavigationBar
-import com.app.myapplication.models.Video
-import com.app.myapplication.screens.*
-import com.app.myapplication.AppDestinations
-import com.app.myapplication.state.rememberAppState
-import com.app.myapplication.state.rememberUserState
-
-// Icons
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBox
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
+import com.android123av.app.components.AppNavigationBar
+import com.android123av.app.screens.*
+import com.android123av.app.state.rememberAppState
+import com.android123av.app.state.rememberUserState
 
 // 协程相关import
-import kotlinx.coroutines.*
-import com.app.myapplication.ui.theme.MyApplicationTheme
-
-
-
-// 网络请求和数据解析相关函数已迁移到NetworkService.kt
-
+import com.android123av.app.ui.theme.MyApplicationTheme
 
 
 // 主应用入口
@@ -131,6 +113,9 @@ fun MyApplicationApp() {
         }
     }
 }
+
+
+
 
 
 

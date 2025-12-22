@@ -1,4 +1,4 @@
-package com.app.myapplication.screens
+package com.android123av.app.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.app.myapplication.models.User
+import com.android123av.app.models.User
 
 // 个人资料屏幕
 @Composable
@@ -96,3 +96,5 @@ fun ProfileScreen(
         }
     }
 }
+
+
