@@ -31,6 +31,12 @@
             android:exported="false"
             android:label="视频播放"
             android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false"
+            android:label="登录"
+            android:theme="@style/Theme.MyApplication"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

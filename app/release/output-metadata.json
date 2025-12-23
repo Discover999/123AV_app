@@ -4,7 +4,7 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "com.app.myapplication",
+  "applicationId": "com.android123av.app",
   "variantName": "release",
   "elements": [
     {

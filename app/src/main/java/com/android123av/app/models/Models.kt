@@ -39,7 +39,25 @@ data class RequestInfo(
 data class User(
     val id: String,
     val name: String,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    val email: String? = null
+)
+
+// 用户信息响应数据类
+data class UserInfoResponse(
+    val status: Int,
+    val result: UserInfoResult?
+) {
+    // 辅助属性，判断请求是否成功
+    val isSuccess: Boolean
+        get() = status == 200
+}
+
+// 用户信息结果数据类
+data class UserInfoResult(
+    val user_id: Int,
+    val username: String,
+    val email: String
 )
 
 // 视频数据类

@@ -1,6 +1,7 @@
 package com.android123av.app.network
 
 import android.app.Activity
+import android.content.Context
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -17,12 +18,39 @@ import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import java.io.IOException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
-// OkHttpClient实例
-val okHttpClient = OkHttpClient()
+// 全局变量用于存储PersistentCookieJar实例
+private var persistentCookieJar: PersistentCookieJar? = null
+
+// OkHttpClient实例 - 配置持久化cookie管理器
+lateinit var okHttpClient: OkHttpClient
+    private set
+
+/**
+ * 初始化网络服务，必须在应用启动时调用
+ */
+fun initializeNetworkService(context: Context) {
+    if (persistentCookieJar == null) {
+        persistentCookieJar = PersistentCookieJar(context)
+    }
+    
+    okHttpClient = OkHttpClient.Builder()
+        .cookieJar(persistentCookieJar!!)
+        .build()
+    
+    println("DEBUG: NetworkService initialized with PersistentCookieJar")
+}
+
+/**
+ * 获取PersistentCookieJar实例
+ */
+fun getPersistentCookieJar(): PersistentCookieJar? = persistentCookieJar
 
 // Gson实例
 val gson = Gson()
@@ -33,8 +61,6 @@ val sampleVideos = listOf(
     Video(id = "2", title = "test2", duration = "1:08:45", thumbnailUrl = "https://picsum.photos/id/238/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
     Video(id = "3", title = "test3", duration = "5:20", thumbnailUrl = "https://picsum.photos/id/239/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
     Video(id = "4", title = "test4", duration = "1:15:10", thumbnailUrl = "https://picsum.photos/id/240/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
-    Video(id = "5", title = "test5", duration = "7:30", thumbnailUrl = "https://picsum.photos/id/241/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
-    Video(id = "6", title = "test6", duration = "12:45", thumbnailUrl = "https://picsum.photos/id/242/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4")
 )
 
 // 登录请求函数
@@ -53,6 +79,11 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
         .post(requestBody)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .header("Referer", "https://123av.com/")
+        .header("Origin", "https://123av.com")
+        .header("X-Requested-With", "XMLHttpRequest")
         .build()
     
     try {
@@ -86,6 +117,48 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
     }
 }
 
+// 获取用户信息函数
+suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
+    val userInfoUrl = "https://123av.com/zh/ajax/user/info"
+    
+    val request = Request.Builder()
+        .url(userInfoUrl)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .header("Referer", "https://123av.com/")
+        .header("Origin", "https://123av.com")
+        .header("X-Requested-With", "XMLHttpRequest")
+        .build()
+    
+    try {
+        val response = okHttpClient.newCall(request).execute()
+        if (response.isSuccessful) {
+            val responseBody = response.body?.string() ?: ""
+            println("DEBUG: Raw user info response: $responseBody")
+            // 解析用户信息响应
+            val userInfoResponse = gson.fromJson(responseBody, UserInfoResponse::class.java)
+            println("DEBUG: Parsed user info response: $userInfoResponse")
+            userInfoResponse
+        } else {
+            // 请求失败，创建一个错误响应对象
+            println("DEBUG: User info request failed with code: ${response.code}")
+            UserInfoResponse(
+                status = response.code,
+                result = null
+            )
+        }
+    } catch (e: IOException) {
+        println("DEBUG: User info request exception: ${e.message}")
+        e.printStackTrace()
+        // 异常情况下返回失败响应
+        UserInfoResponse(
+            status = 500,
+            result = null
+        )
+    }
+}
+
 // 获取网络数据的函数（带响应内容）
 suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<Video>, String> = withContext(Dispatchers.IO) {
     // 构建带分页参数的URL
@@ -101,8 +174,8 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
     
     val request = Request.Builder()
         .url(fullUrl)
-        .header("Origin", "https://surrit.store")
-        .header("Referer", "https://surrit.store/")
+        .header("Origin", "https://123av.com/")
+        .header("Referer", "https://123av.com/")
         .header("User-Agent", "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36")
         .header("Accept", "*/*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -405,6 +478,120 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     
     // 使用现有的fetchVideosData函数获取搜索结果
     fetchVideosData(searchUrl, page)
+}
+
+// 获取用户收藏视频的函数
+suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
+    val favoritesUrl = "https://123av.com/zh/user/collection"
+    
+    println("DEBUG: Fetching user favorites from $favoritesUrl")
+    
+    val request = Request.Builder()
+        .url(favoritesUrl)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .header("Referer", "https://123av.com/")
+        .header("Origin", "https://123av.com")
+        .build()
+    
+    try {
+        val response = okHttpClient.newCall(request).execute()
+        println("DEBUG: Favorites response code: ${response.code}")
+        
+        if (response.isSuccessful) {
+            val html = response.body?.string() ?: ""
+            println("DEBUG: Favorites HTML length: ${html.length}")
+            
+            // 解析收藏页面HTML获取视频信息和分页
+            val (videos, pagination) = parseFavoritesFromHtml(html)
+            println("DEBUG: Parsed ${videos.size} favorite videos, pagination: $pagination")
+            return@withContext Pair(videos, pagination)
+        } else {
+            println("DEBUG: Favorites request failed with code: ${response.code}")
+            return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+        }
+    } catch (e: Exception) {
+        println("DEBUG: Favorites request exception: ${e.message}")
+        e.printStackTrace()
+        return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+    }
+}
+
+// 解析收藏页面HTML的函数
+fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
+    val videos = mutableListOf<Video>()
+    
+    try {
+        val doc = org.jsoup.Jsoup.parse(html)
+        
+        println("DEBUG: Starting to parse favorites HTML, document title: ${doc.title()}")
+        
+        // 根据你提供的HTML结构，收藏页面的视频项在 div.box-item 中
+        val videoElements = doc.select("div.box-item")
+        println("DEBUG: Found ${videoElements.size} video elements with selector 'div.box-item'")
+        
+        videoElements.forEachIndexed { index, element ->
+            try {
+                println("DEBUG: Processing element $index")
+                
+                // 提取标题 - 从 div.detail a 标签中获取
+                val titleElement = element.select("div.detail a").first()
+                val title = titleElement?.text() ?: ""
+                println("DEBUG: Found title: $title")
+                
+                // 提取封面图片URL - 从 img 标签的 data-src 属性中获取
+                val imgElement = element.select("img").first()
+                val thumbnailUrl = imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: ""
+                println("DEBUG: Found thumbnail URL: $thumbnailUrl")
+                
+                // 提取时长 - 从 div.duration 中获取
+                val durationElement = element.select("div.duration").first()
+                val duration = durationElement?.text() ?: "00:00"
+                println("DEBUG: Found duration: $duration")
+                
+                // 提取视频链接和ID - 从 a 标签的 href 属性中获取
+                val videoLink = element.select("div.thumb a").first()
+                val href = videoLink?.attr("href") ?: ""
+                
+                // 提取视频ID - 从 href 中提取，如 "v/fc2-ppv-4798264" -> "fc2-ppv-4798264"
+                val videoId = if (href.contains("/v/")) {
+                    href.substringAfterLast("/v/").substringBefore("/").substringBefore("?")
+                } else {
+                    "fav_${System.currentTimeMillis()}_${index}_${(0..9999).random()}"
+                }
+                
+                if (title.isNotBlank()) {
+                    videos.add(Video(
+                        id = videoId,
+                        title = title.trim(),
+                        duration = duration,
+                        thumbnailUrl = thumbnailUrl.ifBlank { "https://picsum.photos/id/${(200..300).random()}/300/200" },
+                        videoUrl = href.ifBlank { null }
+                    ))
+                    println("DEBUG: Successfully added video $index: title='$title', id='$videoId', thumbnail='$thumbnailUrl'")
+                } else {
+                    println("DEBUG: Skipping element $index - no title found")
+                }
+                
+            } catch (e: Exception) {
+                println("DEBUG: Error processing element $index: ${e.message}")
+            }
+        }
+        
+        println("DEBUG: Final parsing result - found ${videos.size} videos from favorites")
+        
+        // 解析分页信息
+        val paginationInfo = parsePaginationInfo(doc)
+        
+        println("DEBUG: Successfully parsed ${videos.size} favorite videos, pagination: $paginationInfo")
+        return Pair(videos, paginationInfo)
+        
+    } catch (e: Exception) {
+        println("DEBUG: Error parsing favorites HTML: ${e.message}")
+        e.printStackTrace()
+        return Pair(emptyList(), PaginationInfo(1, 1, false, false))
+    }
 }
 
 // 解析分页信息的辅助函数
