@@ -265,7 +265,7 @@ fun SearchScreen(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                         }
-                        items(searchResults) { video ->
+                        items(searchResults, key = { it.id }) { video ->
                             VideoItem(
                                 video = video,
                                 onClick = { onVideoClick(video) }

@@ -66,14 +66,16 @@ data class Video(
     val title: String,
     val duration: String,
     val thumbnailUrl: String?,
-    val videoUrl: String? = null
+    val videoUrl: String? = null,
+    val details: VideoDetails? = null // 新增：视频详细信息
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString(),
-        parcel.readString()
+        parcel.readString(),
+        parcel.readParcelable(VideoDetails::class.java.classLoader)
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -82,6 +84,7 @@ data class Video(
         parcel.writeString(duration)
         parcel.writeString(thumbnailUrl)
         parcel.writeString(videoUrl)
+        parcel.writeParcelable(details, flags)
     }
 
     override fun describeContents(): Int {

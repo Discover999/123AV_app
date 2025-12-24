@@ -12,15 +12,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import coil.ImageLoader
 import com.android123av.app.components.AppNavigationBar
 import com.android123av.app.screens.*
 import com.android123av.app.state.rememberAppState
 import com.android123av.app.state.rememberUserState
 import com.android123av.app.state.UserStateManager
 import com.android123av.app.network.initializeNetworkService
-
-// 协程相关import
 import com.android123av.app.ui.theme.MyApplicationTheme
+import java.io.File
 
 
 // 主应用入口
@@ -28,10 +28,27 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 初始化网络服务（必须在UserStateManager之前初始化）
+        val imageLoader = ImageLoader.Builder(this)
+            .memoryCache {
+                coil.memory.MemoryCache.Builder(this)
+                    .maxSizePercent(0.3) // 增加内存缓存到30%
+                    .build()
+            }
+            .diskCache {
+                coil.disk.DiskCache.Builder()
+                    .directory(File(cacheDir, "image_cache"))
+                    .maxSizeBytes(200 * 1024 * 1024) // 增加磁盘缓存到200MB
+                    .build()
+            }
+            .crossfade(true)
+            .respectCacheHeaders(false)
+            .allowHardware(true) // 启用硬件加速
+            .build()
+        
+        coil.Coil.setImageLoader(imageLoader)
+        
         initializeNetworkService(this)
         
-        // 初始化用户状态管理器
         UserStateManager.initialize(this)
         
         enableEdgeToEdge()

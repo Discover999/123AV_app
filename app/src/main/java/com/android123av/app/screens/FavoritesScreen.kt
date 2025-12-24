@@ -154,7 +154,7 @@ fun FavoritesScreen(
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(vertical = 8.dp)
                         ) {
-                            items(favoriteVideos) { video ->
+                            items(favoriteVideos, key = { it.id }) { video ->
                                 VideoItem(video = video, onClick = { onVideoClick(video) })
                             }
                         }

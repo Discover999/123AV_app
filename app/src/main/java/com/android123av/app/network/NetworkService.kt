@@ -18,9 +18,13 @@ import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Cache
+import okhttp3.ConnectionPool
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import java.io.File
+import java.util.concurrent.TimeUnit
 import java.io.IOException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -40,11 +44,22 @@ fun initializeNetworkService(context: Context) {
         persistentCookieJar = PersistentCookieJar(context)
     }
     
+    val cacheDir = File(context.cacheDir, "http_cache")
+    val cache = Cache(cacheDir, 50 * 1024 * 1024)
+    
     okHttpClient = OkHttpClient.Builder()
         .cookieJar(persistentCookieJar!!)
+        .cache(cache)
+        .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES)) // 增加连接池大小
+        .connectTimeout(10, TimeUnit.SECONDS) // 减少连接超时
+        .readTimeout(20, TimeUnit.SECONDS) // 减少读取超时
+        .writeTimeout(20, TimeUnit.SECONDS) // 减少写入超时
+        .retryOnConnectionFailure(true)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
     
-    println("DEBUG: NetworkService initialized with PersistentCookieJar")
+    println("DEBUG: NetworkService initialized with PersistentCookieJar and optimizations")
 }
 
 /**
@@ -179,6 +194,7 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
         .header("User-Agent", "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36")
         .header("Accept", "*/*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .cacheControl(okhttp3.CacheControl.Builder().maxStale(1, TimeUnit.HOURS).build())
         .build()
 
     try {
@@ -210,16 +226,25 @@ suspend fun fetchVideosData(url: String, page: Int = 1): List<Video> {
 // 根据视频ID获取视频播放URL的函数
 suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO) {
     try {
+        // 检查视频ID是否有效
+        if (videoId.isBlank()) {
+            println("DEBUG: Empty video ID, skipping fetchVideoUrl")
+            return@withContext null
+        }
+        
+        // 对于收藏视频，直接返回null，让WebView方式处理
+        if (videoId.startsWith("fav_")) {
+            println("DEBUG: Favorite video ID detected: $videoId, will use WebView method")
+            return@withContext null
+        }
+        
         // 构建视频详情页URL
         val videoDetailUrl = "https://123av.com/zh/v/$videoId"
         
-        // 针对收藏视频添加获取视频URL的详细日志
-        if (videoId == "fav_custom") {
-            println("DEBUG: 开始使用fetchVideoUrl获取收藏视频URL")
-            println("DEBUG: 请求时间: ${System.currentTimeMillis()}")
-            println("DEBUG: 视频ID: $videoId")
-            println("DEBUG: 详情页URL: $videoDetailUrl")
-        }
+        println("DEBUG: 开始使用fetchVideoUrl获取视频URL")
+        println("DEBUG: 请求时间: ${System.currentTimeMillis()}")
+        println("DEBUG: 视频ID: $videoId")
+        println("DEBUG: 详情页URL: $videoDetailUrl")
         
         // 发送请求获取视频详情页HTML
         val request = Request.Builder()
@@ -229,15 +254,9 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             .build()
         
-        // 针对收藏视频添加请求头详细日志
-        if (videoId == "fav_custom") {
-            println("DEBUG: 收藏视频请求头信息")
-            println("DEBUG: User-Agent: ${request.header("User-Agent")}")
-            println("DEBUG: Accept: ${request.header("Accept")}")
-            println("DEBUG: Accept-Language: ${request.header("Accept-Language")}")
-        }
-        
         val response = okHttpClient.newCall(request).execute()
+        println("DEBUG: fetchVideoUrl response code: ${response.code}")
+        
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             val doc = Jsoup.parse(html)
@@ -247,13 +266,17 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
             // 示例：假设视频URL在某个script标签或iframe中
             val videoElement = doc.selectFirst("video")
             if (videoElement != null) {
-                return@withContext videoElement.attr("src")
+                val videoUrl = videoElement.attr("src")
+                println("DEBUG: Found video URL in video element: $videoUrl")
+                return@withContext videoUrl
             }
             
             // 尝试查找iframe中的视频URL
             val iframeElement = doc.selectFirst("iframe[src*='video']")
             if (iframeElement != null) {
-                return@withContext iframeElement.attr("src")
+                val iframeUrl = iframeElement.attr("src")
+                println("DEBUG: Found video URL in iframe: $iframeUrl")
+                return@withContext iframeUrl
             }
             
             // 尝试从script标签中提取视频URL
@@ -265,40 +288,45 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
                     val urlPattern = """(https?:\/\/[^"]+|https?:\/\/[^']+)"""
                     val matchResult = Regex(urlPattern).find(scriptContent)
                     if (matchResult != null) {
-                        return@withContext matchResult.groups[1]?.value
+                        val foundUrl = matchResult.groups[1]?.value
+                        println("DEBUG: Found video URL in script: $foundUrl")
+                        return@withContext foundUrl
                     }
                 }
             }
+            
+            println("DEBUG: No video URL found in HTML content")
+        } else {
+            println("DEBUG: Failed to fetch video details, response code: ${response.code}")
         }
     } catch (e: Exception) {
+        println("DEBUG: fetchVideoUrl exception")
+        println("DEBUG: 异常时间: ${System.currentTimeMillis()}")
+        println("DEBUG: 异常类型: ${e.javaClass.name}")
+        println("DEBUG: 异常消息: ${e.message}")
         e.printStackTrace()
-        
-        // 针对收藏视频添加异常日志
-        if (videoId == "fav_custom") {
-            println("DEBUG: 收藏视频URL获取异常")
-            println("DEBUG: 异常时间: ${System.currentTimeMillis()}")
-            println("DEBUG: 异常类型: ${e.javaClass.name}")
-            println("DEBUG: 异常消息: ${e.message}")
-            println("DEBUG: 异常堆栈:")
-            e.printStackTrace()
-        }
     }
     
     // 如果无法获取视频URL，返回null
+    println("DEBUG: fetchVideoUrl returning null for videoId: $videoId")
     return@withContext null
 }
 
 // 使用WebView拦截网络请求获取M3U8链接的函数
 suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: String): String? = withContext(Dispatchers.IO) {
+    // 检查视频ID是否有效
+    if (videoId.isBlank()) {
+        println("DEBUG: Empty video ID, skipping WebView fetch")
+        return@withContext null
+    }
+    
     val videoDetailUrl = "https://123av.com/zh/v/$videoId"
     val result = CompletableDeferred<String?>()
     
-    // 针对收藏视频添加详细日志
-    if (videoId == "fav_custom") {
-        println("DEBUG: WebView方式获取收藏视频URL")
-        println("DEBUG: 请求URL: $videoDetailUrl")
-        println("DEBUG: 请求时间: ${System.currentTimeMillis()}")
-    }
+    println("DEBUG: WebView方式获取视频URL")
+    println("DEBUG: 请求URL: $videoDetailUrl")
+    println("DEBUG: 请求时间: ${System.currentTimeMillis()}")
+    println("DEBUG: 视频ID: $videoId")
     
     // 在主线程创建和配置WebView
     withContext(Dispatchers.Main) {
@@ -373,22 +401,22 @@ suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: S
                 ): WebResourceResponse? {
                     val url = request.url.toString()
                     
-                    // 针对收藏视频添加请求拦截日志
-                    if (videoId == "fav_custom") {
-                        println("DEBUG: WebView拦截到请求")
-                        println("DEBUG: 请求URL: $url")
-                        println("DEBUG: 请求方法: ${request.method}")
-                        println("DEBUG: 请求头: ${request.requestHeaders}")
+                    // 如果已经获取到结果，不再处理后续请求
+                    if (result.isCompleted) {
+                        return super.shouldInterceptRequest(view, request)
                     }
                     
-                    // 检查是否是M3U8请求
-                    if (url.contains(".m3u8") && !result.isCompleted) {
-                        // 针对收藏视频添加M3U8拦截成功日志
-                        if (videoId == "fav_custom") {
-                            println("DEBUG: WebView成功拦截到收藏视频M3U8链接")
-                            println("DEBUG: M3U8 URL: $url")
-                            println("DEBUG: 响应时间: ${System.currentTimeMillis()}")
-                        }
+                    // 快速检查URL扩展名（避免不必要的字符串操作）
+                    val urlLower = url.lowercase()
+                    val isVideoFile = urlLower.endsWith(".m3u8") || 
+                                     urlLower.endsWith(".mp4") || 
+                                     urlLower.endsWith(".mpd") ||
+                                     urlLower.contains(".m3u8?") ||
+                                     urlLower.contains(".mp4?") ||
+                                     urlLower.contains(".mpd?")
+                    
+                    if (isVideoFile) {
+                        println("DEBUG: WebView成功拦截到视频链接: $url")
                         result.complete(url)
                         // 清理WebView资源
                         cleanupWebView()
@@ -415,7 +443,7 @@ suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: S
                     cleanupWebView()
                 }
             }
-            timeoutHandler.postDelayed(timeoutRunnable, 10000) // 10秒超时
+            timeoutHandler.postDelayed(timeoutRunnable, 5000) // 减少到5秒超时
             
         } catch (e: Exception) {
             e.printStackTrace()
@@ -550,16 +578,18 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
                 val duration = durationElement?.text() ?: "00:00"
                 println("DEBUG: Found duration: $duration")
                 
-                // 提取视频链接和ID - 从 a 标签的 href 属性中获取
-                val videoLink = element.select("div.thumb a").first()
-                val href = videoLink?.attr("href") ?: ""
+                // 提取视频链接和ID - 使用与首页相同的逻辑
+                val href = element.select("div.detail a").attr("href")
+                println("DEBUG: Found href: $href")
                 
-                // 提取视频ID - 从 href 中提取，如 "v/fc2-ppv-4798264" -> "fc2-ppv-4798264"
-                val videoId = if (href.contains("/v/")) {
-                    href.substringAfterLast("/v/").substringBefore("/").substringBefore("?")
-                } else {
-                    "fav_${System.currentTimeMillis()}_${index}_${(0..9999).random()}"
-                }
+                // 提取视频ID（从href属性中获取，如 "v/huntc-500" -> "huntc-500"）
+                // 使用与parseVideosFromHtml相同的逻辑
+                val videoId = if (href.contains("/")) href.substringAfterLast("/") else href
+                println("DEBUG: Extracted video ID: $videoId")
+                
+                // 重要：收藏视频不应该直接设置videoUrl，因为href是网页链接而不是视频文件
+                // 让VideoPlayerScreen通过WebView方法提取实际的视频URL
+                val actualVideoUrl = null
                 
                 if (title.isNotBlank()) {
                     videos.add(Video(
@@ -567,9 +597,9 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
                         title = title.trim(),
                         duration = duration,
                         thumbnailUrl = thumbnailUrl.ifBlank { "https://picsum.photos/id/${(200..300).random()}/300/200" },
-                        videoUrl = href.ifBlank { null }
+                        videoUrl = actualVideoUrl
                     ))
-                    println("DEBUG: Successfully added video $index: title='$title', id='$videoId', thumbnail='$thumbnailUrl'")
+                    println("DEBUG: Successfully added favorite video $index: title='$title', id='$videoId', thumbnail='$thumbnailUrl', videoUrl=null (will use WebView extraction)")
                 } else {
                     println("DEBUG: Skipping element $index - no title found")
                 }
@@ -622,6 +652,38 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
         hasNextPage = hasNextPage || currentPage < totalPages,
         hasPrevPage = hasPrevPage || currentPage > 1
     )
+}
+
+// 获取视频详情信息的函数
+suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Dispatchers.IO) {
+    try {
+        // 构建视频详情页URL
+        val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+        
+        val request = Request.Builder()
+            .url(videoDetailUrl)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+            .header("Referer", "https://123av.com/")
+            .header("Origin", "https://123av.com")
+            .build()
+        
+        val response = okHttpClient.newCall(request).execute()
+        
+        if (response.isSuccessful) {
+            val html = response.body?.string() ?: ""
+            // 使用HtmlParser解析视频详情
+            return@withContext parseVideoDetails(html)
+        } else {
+            println("DEBUG: Failed to fetch video details, response code: ${response.code}")
+            return@withContext null
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        println("DEBUG: Exception while fetching video details: ${e.message}")
+        return@withContext null
+    }
 }
 
 

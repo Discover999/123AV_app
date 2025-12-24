@@ -99,7 +99,7 @@ fun HomeScreen(
                 )
             } else {
                 LazyColumn {
-                    items(videos) { video ->
+                    items(videos, key = { it.id }) { video ->
                         VideoItem(video = video, onClick = { onVideoClick(video) })
                     }
 
