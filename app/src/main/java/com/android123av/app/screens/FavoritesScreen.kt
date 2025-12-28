@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import com.android123av.app.components.VideoItem
+import com.android123av.app.components.PaginationComponent
 import com.android123av.app.models.Video
 import com.android123av.app.state.UserStateManager
 import com.android123av.app.network.fetchUserFavorites
@@ -160,38 +161,15 @@ fun FavoritesScreen(
                         }
                         
                         // 分页控制
-                        if (totalPages > 1) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // 上一页按钮
-                                TextButton(
-                                    onClick = { if (hasPrevPage) loadFavorites(currentPage - 1) },
-                                    enabled = hasPrevPage
-                                ) {
-                                    Text("上一页")
-                                }
-                                
-                                // 页码信息
-                                Text(
-                                    text = "$currentPage / $totalPages",
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                
-                                // 下一页按钮
-                                TextButton(
-                                    onClick = { if (hasNextPage) loadFavorites(currentPage + 1) },
-                                    enabled = hasNextPage
-                                ) {
-                                    Text("下一页")
-                                }
-                            }
-                        }
+                        PaginationComponent(
+                            currentPage = currentPage,
+                            totalPages = totalPages,
+                            hasNextPage = hasNextPage,
+                            hasPrevPage = hasPrevPage,
+                            isLoading = isLoading,
+                            onLoadNext = { if (hasNextPage) loadFavorites(currentPage + 1) },
+                            onLoadPrevious = { if (hasPrevPage) loadFavorites(currentPage - 1) }
+                        )
                     }
                 }
             }

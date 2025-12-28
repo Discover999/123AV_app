@@ -72,10 +72,10 @@ val gson = Gson()
 
 // 模拟数据
 val sampleVideos = listOf(
-    Video(id = "1", title = "test1", duration = "50:30", thumbnailUrl = "https://picsum.photos/id/237/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
-    Video(id = "2", title = "test2", duration = "1:08:45", thumbnailUrl = "https://picsum.photos/id/238/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
-    Video(id = "3", title = "test3", duration = "5:20", thumbnailUrl = "https://picsum.photos/id/239/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
-    Video(id = "4", title = "test4", duration = "1:15:10", thumbnailUrl = "https://picsum.photos/id/240/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"),
+    Video(id = "1", title = "test1", duration = "50:30", thumbnailUrl = "https://picsum.photos/id/237/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4", favouriteCount = 12345),
+    Video(id = "2", title = "test2", duration = "1:08:45", thumbnailUrl = "https://picsum.photos/id/238/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4", favouriteCount = 5678),
+    Video(id = "3", title = "test3", duration = "5:20", thumbnailUrl = "https://picsum.photos/id/239/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4", favouriteCount = 999),
+    Video(id = "4", title = "test4", duration = "1:15:10", thumbnailUrl = "https://picsum.photos/id/240/300/200", videoUrl = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4", favouriteCount = 123),
 )
 
 // 登录请求函数
@@ -480,9 +480,16 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
         val href = element.select("div.detail a").attr("href")
         val id = if (href.contains("/")) href.substringAfterLast("/") else href
         
+        // 提取收藏量（从 v-scope="Favourite('movie', 357792, 0)" 中提取第二个参数）
+        val favouriteElement = element.select("div.favourite").firstOrNull()
+        val favouriteCount = favouriteElement?.let { el ->
+            val vScope = el.attr("v-scope") ?: ""
+            val regex = Regex("Favourite\\('movie',\\s*(\\d+),")
+            regex.find(vScope)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        } ?: 0
+        
         // 创建Video对象并添加到列表
-        // 注意：这里videoUrl暂时为null，需要在点击视频时再获取
-        videos.add(Video(id, title, duration, thumbnailUrl))
+        videos.add(Video(id, title, duration, thumbnailUrl, favouriteCount = favouriteCount))
     }
 
     // 如果没有解析到视频，返回空列表
@@ -492,6 +499,9 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
 
     // 解析分页信息
     val paginationInfo = parsePaginationInfo(doc)
+    
+    println("DEBUG: parseVideosFromHtml - 解析到 ${videos.size} 个视频")
+    println("DEBUG: parseVideosFromHtml - 分页信息: 当前页=${paginationInfo.currentPage}, 总页数=${paginationInfo.totalPages}, 有下一页=${paginationInfo.hasNextPage}, 有上一页=${paginationInfo.hasPrevPage}")
     
     return Pair(videos, paginationInfo)
 }

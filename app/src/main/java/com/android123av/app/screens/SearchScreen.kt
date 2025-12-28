@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import com.android123av.app.components.VideoItem
+import com.android123av.app.components.LoadMoreButton
 import com.android123av.app.models.Video
 import com.android123av.app.network.searchVideos
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,9 @@ fun SearchScreen(
     var searchResults by remember { mutableStateOf<List<Video>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var hasSearched by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableStateOf(1) }
+    var hasNextPage by remember { mutableStateOf(true) }
+    var isLoadingMore by remember { mutableStateOf(false) }
     
     // 创建协程作用域
     val coroutineScope = rememberCoroutineScope()
@@ -54,44 +58,60 @@ fun SearchScreen(
     var isFocused by remember { mutableStateOf(true) }
 
     // 搜索功能函数
-    suspend fun performSearch(query: String) {
+    suspend fun performSearch(query: String, page: Int = 1, append: Boolean = false) {
         if (query.isEmpty()) return
         
         try {
             withContext(Dispatchers.Main) {
-                isSearching = true
+                if (page == 1) {
+                    isSearching = true
+                } else {
+                    isLoadingMore = true
+                }
                 searchError = null
                 hasSearched = true
             }
             
-            val results = searchVideos(query)
+            val results = searchVideos(query, page)
             
             withContext(Dispatchers.Main) {
-                searchResults = results
+                if (append) {
+                    searchResults = searchResults + results
+                } else {
+                    searchResults = results
+                }
+                // 如果返回的结果少于预期，说明没有更多页了
+                hasNextPage = results.isNotEmpty() && results.size >= 20
+                currentPage = page
                 isSearching = false
+                isLoadingMore = false
             }
         } catch (e: IOException) {
             withContext(Dispatchers.Main) {
                 searchError = "网络连接失败，请检查网络设置"
                 isSearching = false
+                isLoadingMore = false
                 searchResults = emptyList()
             }
         } catch (e: java.net.SocketTimeoutException) {
             withContext(Dispatchers.Main) {
                 searchError = "搜索超时，请检查网络连接或稍后重试"
                 isSearching = false
+                isLoadingMore = false
                 searchResults = emptyList()
             }
         } catch (e: java.net.UnknownHostException) {
             withContext(Dispatchers.Main) {
                 searchError = "无法连接到服务器，请检查网络设置"
                 isSearching = false
+                isLoadingMore = false
                 searchResults = emptyList()
             }
         } catch (e: java.net.SocketException) {
             withContext(Dispatchers.Main) {
                 searchError = "连接中断，请检查网络连接"
                 isSearching = false
+                isLoadingMore = false
                 searchResults = emptyList()
             }
         } catch (e: Exception) {
@@ -100,6 +120,7 @@ fun SearchScreen(
             withContext(Dispatchers.Main) {
                 searchError = "搜索失败，请稍后重试"
                 isSearching = false
+                isLoadingMore = false
                 searchResults = emptyList()
             }
         }
@@ -111,13 +132,19 @@ fun SearchScreen(
             searchResults = emptyList()
             searchError = null
             hasSearched = false
+            currentPage = 1
+            hasNextPage = true
             return
         }
+        
+        // 重置页码
+        currentPage = 1
+        hasNextPage = true
         
         // 取消之前的搜索任务
         searchJob?.cancel()
         searchJob = coroutineScope.launch {
-            performSearch(query)
+            performSearch(query, 1, false)
         }
     }
     
@@ -253,7 +280,9 @@ fun SearchScreen(
                 }
                 searchResults.isNotEmpty() -> {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         contentPadding = PaddingValues(vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -265,11 +294,39 @@ fun SearchScreen(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                         }
+                        
                         items(searchResults, key = { it.id }) { video ->
                             VideoItem(
                                 video = video,
                                 onClick = { onVideoClick(video) }
                             )
+                        }
+                        
+                        if (isLoadingMore) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        if (hasNextPage && !isSearching) {
+                            item {
+                                LoadMoreButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            performSearch(searchQuery, currentPage + 1, true)
+                                        }
+                                    },
+                                    isLoading = isLoadingMore,
+                                    enabled = true
+                                )
+                            }
                         }
                     }
                 }

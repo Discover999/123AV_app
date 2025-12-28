@@ -96,11 +96,11 @@ fun MyApplicationApp(loginActivityLauncher: androidx.activity.result.ActivityRes
             when (appState.currentDestination.value) {
                 AppDestinations.HOME -> HomeScreen(
                     onVideoClick = { video ->
-                        // 启动VideoPlayerActivity
                         val intent = Intent(context, VideoPlayerActivity::class.java)
                         intent.putExtra("video", video)
                         context.startActivity(intent)
-                    }
+                    },
+                    modifier = Modifier.padding(it)
                 )
                 AppDestinations.FAVORITES -> FavoritesScreen(
                     modifier = Modifier.padding(it),
