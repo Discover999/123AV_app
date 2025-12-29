@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -95,8 +97,8 @@ fun HomeScreen(
                                 .background(
                                     Brush.linearGradient(
                                         colors = listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.tertiary
+                                            Color(0xFFE85A83),
+                                            Color(0xFFE85A83).copy(alpha = 0.7f)
                                         )
                                     )
                                 ),
@@ -106,7 +108,7 @@ fun HomeScreen(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                         Column {
@@ -124,26 +126,17 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewMode = ViewMode.LIST }) {
+                    IconButton(onClick = {
+                        viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
+                    }) {
                         Icon(
-                            imageVector = Icons.Default.Home,
-                            contentDescription = "列表视图",
-                            tint = if (viewMode == ViewMode.LIST) {
-                                MaterialTheme.colorScheme.primary
+                            imageVector = if (viewMode == ViewMode.LIST) {
+                                Icons.Default.Menu
                             } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
-                    }
-                    IconButton(onClick = { viewMode = ViewMode.GRID }) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "网格视图",
-                            tint = if (viewMode == ViewMode.GRID) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
+                                Icons.Default.MoreVert
+                            },
+                            contentDescription = "切换视图",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -152,12 +145,11 @@ fun HomeScreen(
                 )
             )
         }
-    ) { scaffoldPadding ->
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(scaffoldPadding)
-                .then(modifier)
+                .padding(it)
         ) {
             CategoryTabs(
                 modifier = Modifier.fillMaxWidth(),
@@ -241,7 +233,7 @@ private fun VideoListContent(
     onLoadPrevious: () -> Unit
 ) {
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         items(videos, key = { it.id }) { video ->
@@ -279,7 +271,7 @@ private fun VideoGridContent(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

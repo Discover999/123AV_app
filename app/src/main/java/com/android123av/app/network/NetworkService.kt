@@ -520,9 +520,9 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
 
 // 获取用户收藏视频的函数
 suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
-    val favoritesUrl = "https://123av.com/zh/user/collection"
+    val favoritesUrl = "https://123av.com/zh/user/collection?page=$page"
     
-    println("DEBUG: Fetching user favorites from $favoritesUrl")
+    println("DEBUG: Fetching user favorites from $favoritesUrl, page: $page")
     
     val request = Request.Builder()
         .url(favoritesUrl)

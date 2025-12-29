@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.compose.material)
+    implementation(libs.androidx.compose.material.icons.extended)
     
     // 网络请求相关依赖
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

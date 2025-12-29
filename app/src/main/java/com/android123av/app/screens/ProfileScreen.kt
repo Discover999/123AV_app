@@ -1,36 +1,37 @@
 package com.android123av.app.screens
 
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBox
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.android123av.app.models.User
 import com.android123av.app.state.UserStateManager
 
-// 用户信息栏组件
 @Composable
-fun UserInfoSection(
+fun ProfileHeader(
     isLoggedIn: Boolean,
     userName: String?,
     userEmail: String?,
-    userId: String?,
-    onClick: () -> Unit
+    onLoginClick: () -> Unit
 ) {
-    println("DEBUG: UserInfoSection - isLoggedIn: $isLoggedIn, userName: $userName, userEmail: $userEmail, userId: $userId")
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .clickable { onClick() },
+            .clickable { onLoginClick() },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -42,49 +43,32 @@ fun UserInfoSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // 左侧用户信息
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                if (isLoggedIn) {
-                    // 用户名
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (isLoggedIn) userName ?: "未知用户" else "点击登录",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isLoggedIn && !userEmail.isNullOrEmpty()) {
                     Text(
-                        text = userName ?: "未知用户",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        text = userEmail,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
-                    // 邮箱
-                    if (!userEmail.isNullOrEmpty()) {
-                        Text(
-                            text = userEmail,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    // 用户ID
-                    if (!userId.isNullOrEmpty()) {
-                        Text(
-                            text = "ID: $userId",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                } else {
-                    // 未登录状态
+                }
+                if (!isLoggedIn) {
                     Text(
-                        text = "请先登录",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        text = "登录后享受更多功能",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
-            
-            // 右侧头像
             Icon(
-                imageVector = Icons.Default.AccountBox,
-                contentDescription = "用户头像",
+                imageVector = if (isLoggedIn) Icons.Default.AccountCircle else Icons.Default.Person,
+                contentDescription = null,
                 modifier = Modifier.size(48.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -92,7 +76,73 @@ fun UserInfoSection(
     }
 }
 
-// 个人资料屏幕
+@Composable
+fun MenuItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
@@ -102,15 +152,7 @@ fun ProfileScreen(
     onLogout: () -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
-    println("DEBUG: ProfileScreen composable - isLoggedIn: $isLoggedIn, user: $user")
-    println("DEBUG: ProfileScreen - UserStateManager.isLoggedIn: ${UserStateManager.isLoggedIn}")
-    println("DEBUG: ProfileScreen - UserStateManager.userName: ${UserStateManager.userName}")
-    println("DEBUG: ProfileScreen - UserStateManager.userEmail: ${UserStateManager.userEmail}")
-    println("DEBUG: ProfileScreen - UserStateManager.userId: ${UserStateManager.userId}")
-    
-    // 关于对话框状态
     var showAboutDialog by remember { mutableStateOf(false) }
-    // 注销确认对话框状态
     var showLogoutDialog by remember { mutableStateOf(false) }
     
     Scaffold(
@@ -122,82 +164,119 @@ fun ProfileScreen(
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues)
-        ) {
-        // 用户信息栏
-        println("DEBUG: ProfileScreen - isLoggedIn: $isLoggedIn, userName: ${UserStateManager.userName}, userEmail: ${UserStateManager.userEmail}, userId: ${UserStateManager.userId}")
-        UserInfoSection(
-            isLoggedIn = isLoggedIn,
-            userName = UserStateManager.userName,
-            userEmail = UserStateManager.userEmail,
-            userId = UserStateManager.userId,
-            onClick = {
-                if (isLoggedIn) {
-                    // 已登录状态下点击显示注销确认对话框
-                    showLogoutDialog = true
-                } else {
-                    // 未登录状态下点击跳转到登录页面
-                    onNavigateToLogin()
-                }
-            }
-        )
-        
-        // 主要内容区域
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(paddingValues)
         ) {
-            // 移除显眼的退出登录按钮，只保留点击用户信息card的注销功能
+            ProfileHeader(
+                isLoggedIn = isLoggedIn,
+                userName = UserStateManager.userName,
+                userEmail = UserStateManager.userEmail,
+                onLoginClick = {
+                    if (!isLoggedIn) {
+                        onNavigateToLogin()
+                    }
+                }
+            )
             
-            // 关于部分 - 点击打开对话框
-            Spacer(modifier = Modifier.height(32.dp))
-            Divider()
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showAboutDialog = true },
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+                    .padding(bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                AnimatedVisibility(
+                    visible = isLoggedIn,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
                 ) {
-                    Text(
-                        text = "关于",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "关于",
-                        tint = MaterialTheme.colorScheme.primary
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "功能",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                        
+                        MenuItem(
+                            icon = Icons.Default.Favorite,
+                            title = "我的收藏",
+                            subtitle = "收藏的视频",
+                            onClick = { }
+                        )
+                        
+                        MenuItem(
+                            icon = Icons.Default.Download,
+                            title = "下载管理",
+                            subtitle = "已下载视频",
+                            onClick = { }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = if (isLoggedIn) "账户" else "常用",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+                
+                MenuItem(
+                    icon = Icons.Default.Settings,
+                    title = "设置",
+                    subtitle = "应用设置",
+                    onClick = { }
+                )
+                
+                MenuItem(
+                    icon = Icons.Default.Help,
+                    title = "帮助与反馈",
+                    subtitle = "常见问题",
+                    onClick = { }
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                MenuItem(
+                    icon = Icons.Default.Info,
+                    title = "关于",
+                    subtitle = "版本信息",
+                    onClick = { showAboutDialog = true }
+                )
+                
+                AnimatedVisibility(
+                    visible = isLoggedIn,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    MenuItem(
+                        icon = Icons.Default.Logout,
+                        title = "退出登录",
+                        subtitle = "返回登录界面",
+                        onClick = { showLogoutDialog = true },
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
-            }
+                
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
     
-    // 关于对话框
     if (showAboutDialog) {
-        AboutDialog(
-            onDismiss = { showAboutDialog = false }
-        )
+        AboutDialog(onDismiss = { showAboutDialog = false })
     }
     
-    // 注销确认对话框
     if (showLogoutDialog) {
         LogoutConfirmationDialog(
             onConfirm = {
@@ -210,9 +289,7 @@ fun ProfileScreen(
 }
 
 @Composable
-fun AboutDialog(
-    onDismiss: () -> Unit
-) {
+fun AboutDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -236,9 +313,7 @@ fun AboutDialog(
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
+            TextButton(onClick = onDismiss) {
                 Text("确定")
             }
         },
@@ -267,16 +342,12 @@ fun LogoutConfirmationDialog(
             )
         },
         confirmButton = {
-            TextButton(
-                onClick = onConfirm
-            ) {
+            TextButton(onClick = onConfirm) {
                 Text("确定")
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
+            TextButton(onClick = onDismiss) {
                 Text("取消")
             }
         }

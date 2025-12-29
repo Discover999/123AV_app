@@ -37,34 +37,46 @@ fun FavoritesScreen(
 
     // 加载收藏视频的函数
     fun loadFavorites(page: Int = 1) {
-        if (!isLoggedIn) return
+        if (!isLoggedIn) {
+            println("DEBUG: loadFavorites skipped - not logged in")
+            return
+        }
         
         isLoading = true
+        println("DEBUG: loadFavorites started - page=$page, isLoading=$isLoading")
         coroutineScope.launch {
             try {
                 val (videos, pagination) = fetchUserFavorites(page)
-                favoriteVideos = videos
-                currentPage = pagination.currentPage
-                totalPages = pagination.totalPages
+                println("DEBUG: fetchUserFavorites returned - videos.size=${videos.size}, pagination=$pagination")
+                if (page == 1) {
+                    favoriteVideos = videos
+                } else {
+                    favoriteVideos = favoriteVideos + videos
+                }
+                if (pagination.totalPages > 0) {
+                    totalPages = pagination.totalPages
+                }
                 hasNextPage = pagination.hasNextPage
                 hasPrevPage = pagination.hasPrevPage
-                println("DEBUG: FavoritesScreen - Loaded ${videos.size} favorite videos for user: $userName, page: $page/$totalPages")
+                println("DEBUG: FavoritesScreen - Loaded ${videos.size} favorite videos, currentPage=$page, hasNextPage=$hasNextPage, hasPrevPage=$hasPrevPage")
             } catch (e: Exception) {
                 println("DEBUG: FavoritesScreen - Error loading favorites: ${e.message}")
-                favoriteVideos = emptyList()
+                if (page == 1) {
+                    favoriteVideos = emptyList()
+                }
             } finally {
                 isLoading = false
+                println("DEBUG: loadFavorites completed - isLoading=$isLoading")
             }
         }
     }
 
-    // 当用户登录状态改变时，重新加载收藏
-    LaunchedEffect(isLoggedIn) {
+    // 当用户登录状态或页码改变时，重新加载收藏
+    LaunchedEffect(isLoggedIn, currentPage) {
+        println("DEBUG: LaunchedEffect triggered - isLoggedIn=$isLoggedIn, currentPage=$currentPage")
         if (isLoggedIn) {
-            // 用户已登录，获取收藏视频
-            loadFavorites(1)
+            loadFavorites(currentPage)
         } else {
-            // 用户未登录，清空收藏列表
             favoriteVideos = emptyList()
             isLoading = false
         }
@@ -80,14 +92,14 @@ fun FavoritesScreen(
                 )
             )
         }
-    ) { paddingValues ->
+    ) {
         Box(modifier = Modifier
             .fillMaxSize()
-            .padding(paddingValues)) {
+            .padding(it)) {
             
             when {
-                isLoading -> {
-                    // 加载中状态
+                isLoading && favoriteVideos.isEmpty() -> {
+                    // 首次加载中状态 - 显示加载动画
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -149,27 +161,28 @@ fun FavoritesScreen(
                 }
                 
                 else -> {
-                    // 显示收藏视频列表
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(vertical = 8.dp)
-                        ) {
-                            items(favoriteVideos, key = { it.id }) { video ->
-                                VideoItem(video = video, onClick = { onVideoClick(video) })
-                            }
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(favoriteVideos, key = { it.id }) { video ->
+                            VideoItem(video = video, onClick = { onVideoClick(video) })
                         }
-                        
-                        // 分页控制
-                        PaginationComponent(
-                            currentPage = currentPage,
-                            totalPages = totalPages,
-                            hasNextPage = hasNextPage,
-                            hasPrevPage = hasPrevPage,
-                            isLoading = isLoading,
-                            onLoadNext = { if (hasNextPage) loadFavorites(currentPage + 1) },
-                            onLoadPrevious = { if (hasPrevPage) loadFavorites(currentPage - 1) }
-                        )
+
+                        item {
+                            PaginationComponent(
+                                currentPage = currentPage,
+                                totalPages = totalPages,
+                                hasNextPage = hasNextPage,
+                                hasPrevPage = hasPrevPage,
+                                isLoading = isLoading,
+                                onLoadNext = { if (hasNextPage) currentPage++ },
+                                onLoadPrevious = { if (hasPrevPage) currentPage-- }
+                            )
+                        }
                     }
                 }
             }
