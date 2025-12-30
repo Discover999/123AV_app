@@ -1,12 +1,29 @@
 # 123AV Android 应用
 
+<div align="center">
+
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-blue.svg)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2024.02.00-yellow.svg)](https://developer.android.com/jetpack/compose)
 [![Android SDK](https://img.shields.io/badge/Android%20SDK-34-green.svg)](https://developer.android.com/studio)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-一个基于 Android 平台的视频聚合应用，提供视频浏览、播放、搜索和个人中心功能。采用纯 Kotlin + Jetpack Compose 现代Android开发技术栈。
+</div>
+
+基于 Android 平台的视频聚合应用，提供视频浏览、播放、搜索和个人中心功能。采用纯 Kotlin + Jetpack Compose 现代 Android 开发技术栈。
+
+## 目录
+
+- [功能特性](#功能特性)
+- [技术架构](#技术架构)
+- [项目结构](#项目结构)
+- [环境配置](#环境配置)
+- [快速开始](#快速开始)
+- [数据来源](#数据来源)
+- [许可证](#许可证)
 
 ## 功能特性
+
+### 核心模块
 
 | 模块 | 功能描述 |
 |------|----------|
@@ -15,12 +32,12 @@
 | **收藏** | 用户登录后管理个人收藏视频，支持分页加载 |
 | **个人中心** | 用户信息展示、登录状态管理 |
 
-### 核心功能
+### 技术亮点
 
 - **视频播放**：在线视频播放，独立播放器界面
-- **分页加载**：无限滚动分页，提升大数据量加载性能
+- **分页加载**：无限滚动分页，优化大数据量加载性能
 - **状态持久化**：用户登录状态本地管理
-- **响应式UI**：Material Design 3 设计规范
+- **响应式 UI**：Material Design 3 设计规范
 
 ## 技术架构
 
@@ -29,54 +46,56 @@
 | 类别 | 技术选型 |
 |------|----------|
 | 开发语言 | Kotlin |
-| UI框架 | Jetpack Compose |
+| UI 框架 | Jetpack Compose |
 | 状态管理 | MutableState + StateFlow |
 | 网络请求 | OkHttp + Retrofit |
-| HTML解析 | Jsoup |
+| HTML 解析 | Jsoup |
 | 异步处理 | Coroutines |
-| 最低SDK | 24 (Android 7.0) |
-| 目标SDK | 34 (Android 14) |
+| 最低 SDK | 24 (Android 7.0) |
+| 目标 SDK | 34 (Android 14) |
 
 ### 项目结构
 
 ```
 app/src/main/java/com/android123av/app/
-├── components/          # 可复用UI组件
-│   ├── VideoItem.kt     # 视频列表项
+├── components/              # 可复用 UI 组件
+│   ├── VideoItem.kt         # 视频列表项
 │   ├── PaginationComponent.kt  # 分页组件
-│   └── LoadingSkeleton.kt # 加载骨架屏
-├── models/              # 数据模型
-│   └── Video.kt         # 视频数据模型
-├── network/             # 网络层
-│   ├── NetworkService.kt  # 网络请求服务
-│   └── ApiEndpoints.kt    # API接口定义
-├── screens/             # 页面组件
-│   ├── HomeScreen.kt    # 首页
-│   ├── FavoritesScreen.kt  # 收藏页面
-│   ├── ProfileScreen.kt  # 个人中心
-│   └── SearchScreen.kt  # 搜索页面
-├── state/               # 状态管理
+│   └── LoadingSkeleton.kt   # 加载骨架屏
+├── models/                  # 数据模型
+│   └── Video.kt             # 视频数据模型
+├── network/                 # 网络层
+│   ├── NetworkService.kt    # 网络请求服务
+│   └── ApiEndpoints.kt      # API 接口定义
+├── screens/                 # 页面组件
+│   ├── HomeScreen.kt        # 首页
+│   ├── FavoritesScreen.kt   # 收藏页面
+│   ├── ProfileScreen.kt     # 个人中心
+│   └── SearchScreen.kt      # 搜索页面
+├── state/                   # 状态管理
 │   └── UserStateManager.kt  # 用户状态管理
-├── ui/theme/            # 主题配置
-│   ├── Theme.kt         # 应用主题
-│   ├── Color.kt         # 颜色定义
-│   └── Type.kt          # 字体排版
-├── MainActivity.kt      # 应用入口
-└── Navigation.kt        # 导航配置
+├── ui/theme/                # 主题配置
+│   ├── Theme.kt             # 应用主题
+│   ├── Color.kt             # 颜色定义
+│   └── Type.kt              # 字体排版
+├── MainActivity.kt          # 应用入口
+└── Navigation.kt            # 导航配置
 ```
 
 ## 环境配置
 
 ### 开发环境要求
 
-- Android Studio Hedgehog (2023.1.1) 或更高版本
-- JDK 17
-- Gradle 8.4+
-- Android SDK 34
+| 工具 | 版本要求 |
+|------|----------|
+| Android Studio | Hedgehog (2023.1.1) 或更高版本 |
+| JDK | 17 |
+| Gradle | 8.4+ |
+| Android SDK | 34 |
 
-### 依赖配置
+### 核心依赖配置
 
-项目使用 Gradle Kotlin DSL 进行构建配置，主要依赖包括：
+项目使用 Gradle Kotlin DSL 进行构建配置：
 
 ```kotlin
 // Core
@@ -120,7 +139,7 @@ implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 # 清理构建产物
 ./gradlew clean
 
-# 调试构建
+# 调试构建并安装
 ./gradlew installDebug
 ```
 
