@@ -342,7 +342,11 @@ private fun LoginCard(
 
             OutlinedTextField(
                 value = username,
-                onValueChange = onUsernameChange,
+                onValueChange = { newValue ->
+                    if (newValue.length <= 20) {
+                        onUsernameChange(newValue)
+                    }
+                },
                 label = { Text("用户名") },
                 placeholder = { Text("请输入用户名") },
                 leadingIcon = {
@@ -372,7 +376,11 @@ private fun LoginCard(
 
             OutlinedTextField(
                 value = password,
-                onValueChange = onPasswordChange,
+                onValueChange = { newValue ->
+                    if (newValue.length <= 30) {
+                        onPasswordChange(newValue)
+                    }
+                },
                 label = { Text("密码") },
                 placeholder = { Text("请输入密码") },
                 leadingIcon = {

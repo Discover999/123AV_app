@@ -241,7 +241,7 @@ fun ProfileScreen(
 
                 MenuItem(
                     icon = Icons.Default.Wifi,
-                    title = "网络连接测试",
+                    title = "可用性检测",
                     subtitle = "检测服务器连接状态",
                     onClick = { onNavigateToNetworkTest() }
                 )

@@ -190,19 +190,20 @@ fun HomeScreen(
                         ContentState.CONTENT -> {
                             when (viewMode) {
                                 ViewMode.LIST -> {
-                                    VideoListContent(
-                                        videos = videos,
-                                        currentPage = currentPage,
-                                        totalPages = totalPages,
-                                        hasNextPage = hasNextPage,
-                                        hasPrevPage = hasPrevPage,
-                                        isLoading = isLoading,
-                                        isCategoryChanging = isCategoryChanging,
-                                        onVideoClick = onVideoClick,
-                                        onLoadNext = { if (hasNextPage) currentPage++ },
-                                        onLoadPrevious = { if (hasPrevPage) currentPage-- }
-                                    )
-                                }
+                                VideoListContent(
+                                    videos = videos,
+                                    currentPage = currentPage,
+                                    totalPages = totalPages,
+                                    hasNextPage = hasNextPage,
+                                    hasPrevPage = hasPrevPage,
+                                    isLoading = isLoading,
+                                    isCategoryChanging = isCategoryChanging,
+                                    onVideoClick = onVideoClick,
+                                    onLoadNext = { if (hasNextPage) currentPage++ },
+                                    onLoadPrevious = { if (hasPrevPage) currentPage-- },
+                                    onPageSelected = { page -> currentPage = page }
+                                )
+                            }
                                 ViewMode.GRID -> {
                                     VideoGridContent(
                                         videos = videos,
@@ -214,7 +215,8 @@ fun HomeScreen(
                                         isCategoryChanging = isCategoryChanging,
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
-                                        onLoadPrevious = { if (hasPrevPage) currentPage-- }
+                                        onLoadPrevious = { if (hasPrevPage) currentPage-- },
+                                        onPageSelected = { page -> currentPage = page }
                                     )
                                 }
                             }
@@ -253,7 +255,8 @@ private fun VideoListContent(
     isCategoryChanging: Boolean,
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
-    onLoadPrevious: () -> Unit
+    onLoadPrevious: () -> Unit,
+    onPageSelected: (Int) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -274,7 +277,8 @@ private fun VideoListContent(
                     hasPrevPage = hasPrevPage,
                     isLoading = isLoading,
                     onLoadNext = onLoadNext,
-                    onLoadPrevious = onLoadPrevious
+                    onLoadPrevious = onLoadPrevious,
+                    onPageSelected = onPageSelected
                 )
             }
         }
@@ -293,7 +297,8 @@ private fun VideoGridContent(
     isCategoryChanging: Boolean,
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
-    onLoadPrevious: () -> Unit
+    onLoadPrevious: () -> Unit,
+    onPageSelected: (Int) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -316,7 +321,8 @@ private fun VideoGridContent(
                     hasPrevPage = hasPrevPage,
                     isLoading = isLoading,
                     onLoadNext = onLoadNext,
-                    onLoadPrevious = onLoadPrevious
+                    onLoadPrevious = onLoadPrevious,
+                    onPageSelected = onPageSelected
                 )
             }
         }

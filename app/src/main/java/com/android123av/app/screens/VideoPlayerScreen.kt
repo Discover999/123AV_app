@@ -7,6 +7,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -191,28 +193,127 @@ fun VideoPlayerScreen(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                if (!isLocked) {
-                    showControlsTemporarily()
+    when {
+        isLoading -> LoadingState(video.title)
+        errorMessage != null -> VideoErrorState(
+            message = errorMessage!!,
+            onBack = { onBack() },
+            onRetry = {
+                errorMessage = null
+                isLoading = true
+                videoUrl = null
+                coroutineScope.launch {
+                    try {
+                        if (!video.videoUrl.isNullOrBlank()) {
+                            videoUrl = video.videoUrl
+                        } else {
+                            videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
+                            if (videoUrl == null) {
+                                val httpUrl = fetchVideoUrl(video.id)
+                                if (httpUrl != null && httpUrl.contains(".m3u8")) {
+                                    videoUrl = httpUrl
+                                } else {
+                                    videoUrl = fetchM3u8UrlWithWebView(context, video.id)
+                                }
+                            }
+                        }
+                        if (videoUrl == null) {
+                            errorMessage = "无法获取视频播放地址"
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "获取视频失败: ${e.message}"
+                    } finally {
+                        isLoading = false
+                    }
                 }
             }
-    ) {
-        when {
-            isLoading -> LoadingState(video.title)
-            errorMessage != null -> VideoErrorState(errorMessage!!) { onBack() }
-            videoUrl != null -> {
-                if (isFullscreen) {
+        )
+        videoUrl != null -> {
+            if (isFullscreen) {
+                Box(
+                    modifier = modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                player = ExoPlayer.Builder(ctx).build().apply {
+                                    val source = createMediaSource(videoUrl!!)
+                                    setMediaSource(source)
+                                    prepare()
+                                    playWhenReady = true
+
+                                    addListener(object : Player.Listener {
+                                        override fun onPlaybackStateChanged(state: Int) {
+                                            when (state) {
+                                                Player.STATE_READY -> scheduleHideControls()
+                                                Player.STATE_ENDED -> {
+                                                    showControls = true
+                                                    hideControlsJob.value?.cancel()
+                                                }
+                                            }
+                                        }
+
+                                        override fun onIsPlayingChanged(playing: Boolean) {
+                                            if (playing) scheduleHideControls()
+                                        }
+
+                                        override fun onPlayerError(error: PlaybackException) {
+                                            Toast.makeText(ctx, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    })
+                                }
+                                exoPlayer = player
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                useController = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        PlayerControls(
+                            exoPlayer = exoPlayer,
+                            isFullscreen = true,
+                            isLocked = isLocked,
+                            showSpeedSelector = showSpeedSelector,
+                            currentSpeedIndex = currentSpeedIndex,
+                            controlsAlpha = controlsAlpha,
+                            showControls = showControls,
+                            onBack = { isFullscreen = false },
+                            onFullscreen = { isFullscreen = false },
+                            onLock = { isLocked = !isLocked },
+                            onSpeedChange = { index ->
+                                currentSpeedIndex = index
+                                exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+                                showSpeedSelector = false
+                            },
+                            onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                            onPlayPause = {
+                                exoPlayer?.let { player ->
+                                    if (player.isPlaying) player.pause() else player.play()
+                                }
+                            },
+                            onTap = {
+                                if (!isLocked) {
+                                    showControlsTemporarily()
+                                }
+                            },
+                            onShowControls = { showControlsTemporarily() }
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = modifier.fillMaxWidth()
+                ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillMaxHeight()
-                            .align(Alignment.TopCenter)
+                            .aspectRatio(16f / 9f)
                     ) {
                         AndroidView(
                             factory = { ctx ->
@@ -251,75 +352,9 @@ fun VideoPlayerScreen(
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        PlayerControls(
-                            exoPlayer = exoPlayer,
-                            isFullscreen = true,
-                            isLocked = isLocked,
-                            showSpeedSelector = showSpeedSelector,
-                            currentSpeedIndex = currentSpeedIndex,
-                            controlsAlpha = controlsAlpha,
-                            onBack = { isFullscreen = false },
-                            onFullscreen = { isFullscreen = false },
-                            onLock = { isLocked = !isLocked },
-                            onSpeedChange = { index ->
-                                currentSpeedIndex = index
-                                exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
-                                showSpeedSelector = false
-                            },
-                            onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
-                            onPlayPause = {
-                                exoPlayer?.let { player ->
-                                    if (player.isPlaying) player.pause() else player.play()
-                                }
-                            }
-                        )
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16f / 9f)
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            AndroidView(
-                                factory = { ctx ->
-                                    PlayerView(ctx).apply {
-                                        player = ExoPlayer.Builder(ctx).build().apply {
-                                            val source = createMediaSource(videoUrl!!)
-                                            setMediaSource(source)
-                                            prepare()
-                                            playWhenReady = true
-
-                                            addListener(object : Player.Listener {
-                                                override fun onPlaybackStateChanged(state: Int) {
-                                                    when (state) {
-                                                        Player.STATE_READY -> scheduleHideControls()
-                                                        Player.STATE_ENDED -> {
-                                                            showControls = true
-                                                            hideControlsJob.value?.cancel()
-                                                        }
-                                                    }
-                                                }
-
-                                                override fun onIsPlayingChanged(playing: Boolean) {
-                                                    if (playing) scheduleHideControls()
-                                                }
-
-                                                override fun onPlayerError(error: PlaybackException) {
-                                                    Toast.makeText(ctx, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
-                                                }
-                                            })
-                                        }
-                                        exoPlayer = player
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                        useController = false
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-
                             PlayerControls(
                                 exoPlayer = exoPlayer,
                                 isFullscreen = false,
@@ -327,6 +362,7 @@ fun VideoPlayerScreen(
                                 showSpeedSelector = showSpeedSelector,
                                 currentSpeedIndex = currentSpeedIndex,
                                 controlsAlpha = controlsAlpha,
+                                showControls = showControls,
                                 onBack = onBack,
                                 onFullscreen = { isFullscreen = true },
                                 onLock = { isLocked = !isLocked },
@@ -340,17 +376,23 @@ fun VideoPlayerScreen(
                                     exoPlayer?.let { player ->
                                         if (player.isPlaying) player.pause() else player.play()
                                     }
-                                }
+                                },
+                                onTap = {
+                                    if (!isLocked) {
+                                        showControlsTemporarily()
+                                    }
+                                },
+                                onShowControls = { showControlsTemporarily() }
                             )
                         }
+                    }
 
-                        if (videoDetails != null) {
-                            VideoInfoSection(
-                                video = video,
-                                videoDetails = videoDetails!!,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
+                    if (videoDetails != null) {
+                        VideoInfoSection(
+                            video = video,
+                            videoDetails = videoDetails!!,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
@@ -398,10 +440,13 @@ private fun LoadingState(title: String) {
 @Composable
 private fun VideoErrorState(
     message: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRetry: () -> Unit
 ) {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -412,23 +457,35 @@ private fun VideoErrorState(
                 imageVector = Icons.Default.Error,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = Color.White.copy(alpha = 0.6f)
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = onBack,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text("返回")
+                OutlinedButton(
+                    onClick = onBack,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text("返回")
+                }
+                Button(
+                    onClick = onRetry,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("重新加载")
+                }
             }
         }
     }
@@ -442,15 +499,31 @@ private fun PlayerControls(
     showSpeedSelector: Boolean,
     currentSpeedIndex: Int,
     controlsAlpha: Float,
+    showControls: Boolean,
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onSpeedChange: (Int) -> Unit,
     onSpeedSelectorToggle: () -> Unit,
-    onPlayPause: () -> Unit
+    onPlayPause: () -> Unit,
+    onTap: () -> Unit,
+    onShowControls: () -> Unit
 ) {
-    val playbackState = exoPlayer?.playbackState
-    val isPlaying = exoPlayer?.isPlaying == true
+    var isPlaying by remember { mutableStateOf(false) }
+    var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
+
+    LaunchedEffect(exoPlayer) {
+        exoPlayer?.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                playbackState = state
+            }
+
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+        })
+    }
+
     val currentPosition = exoPlayer?.currentPosition ?: 0L
     val duration = exoPlayer?.duration ?: 0L
     val bufferedPosition = exoPlayer?.bufferedPosition ?: 0L
@@ -461,6 +534,18 @@ private fun PlayerControls(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = !isLocked,
+                    onClick = {
+                        if (!showControls) {
+                            onShowControls()
+                        } else {
+                            onTap()
+                        }
+                    }
+                )
                 .alpha(controlsAlpha)
                 .background(
                     Brush.verticalGradient(

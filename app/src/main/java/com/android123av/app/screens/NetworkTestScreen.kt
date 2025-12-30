@@ -70,7 +70,7 @@ fun NetworkTestScreen(
     
     var results by remember { mutableStateOf<List<TestResult>>(emptyList()) }
     var isTesting by remember { mutableStateOf(false) }
-    var currentIPInfo by remember { mutableStateOf<IPInfo?>(null) }
+    var currentIPInfo by remember { mutableStateOf(IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")) }
     var isRefreshingIP by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     
@@ -81,7 +81,7 @@ fun NetworkTestScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("网络连接测试") },
+                title = { Text("可用性检测") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -102,41 +102,23 @@ fun NetworkTestScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .padding(16.dp)
         ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "测试说明",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+            IPAddressCard(
+                ipInfo = currentIPInfo,
+                isRefreshing = isRefreshingIP,
+                onRefresh = {
+                    if (!isRefreshingIP) {
+                        isRefreshingIP = true
+                        coroutineScope.launch {
+                            currentIPInfo = fetchIPInfo()
+                            isRefreshingIP = false
+                        }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "点击下方按钮开始测试所有网络连接的可用性。测试将使用 HTTP HEAD 请求检查服务器响应。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
-            }
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             Button(
                 onClick = {
@@ -159,7 +141,7 @@ fun NetworkTestScreen(
                 if (isTesting) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.primary,
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -193,23 +175,6 @@ fun NetworkTestScreen(
                         endpoint = endpoint,
                         result = result,
                         isTesting = isTesting && result == null
-                    )
-                }
-                
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    IPAddressCard(
-                        ipInfo = currentIPInfo,
-                        isRefreshing = isRefreshingIP,
-                        onRefresh = {
-                            if (!isRefreshingIP) {
-                                isRefreshingIP = true
-                                coroutineScope.launch {
-                                    currentIPInfo = fetchIPInfo()
-                                    isRefreshingIP = false
-                                }
-                            }
-                        }
                     )
                 }
             }
@@ -248,7 +213,7 @@ private fun IPAddressCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (ipInfo != null) {
+                if (ipInfo != null && ipInfo.ip != "-" && ipInfo.country != "-") {
                     Text(
                         text = "${ipInfo.countryCode} - ${ipInfo.country}",
                         style = MaterialTheme.typography.titleMedium,
@@ -269,7 +234,7 @@ private fun IPAddressCard(
                     )
                 } else {
                     Text(
-                        text = "获取中...",
+                        text = "-:-:-",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
@@ -298,7 +263,7 @@ private fun IPAddressCard(
     }
 }
 
-private suspend fun fetchIPInfo(): IPInfo? {
+private suspend fun fetchIPInfo(): IPInfo {
     return withContext(Dispatchers.IO) {
         try {
             val url = URL("https://api.ip.sb/geoip")
@@ -315,17 +280,17 @@ private suspend fun fetchIPInfo(): IPInfo? {
                 
                 val json = JSONObject(response)
                 IPInfo(
-                    ip = json.optString("ip", "未知"),
-                    countryCode = json.optString("country_code", "未知"),
-                    country = json.optString("country", "未知"),
+                    ip = json.optString("ip", "-"),
+                    countryCode = json.optString("country_code", "-"),
+                    country = json.optString("country", "-"),
                     organization = json.optString("organization", ""),
-                    isp = json.optString("isp", "未知")
+                    isp = json.optString("isp", "-")
                 )
             } else {
-                null
+                IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")
             }
         } catch (e: Exception) {
-            null
+            IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")
         }
     }
 }
@@ -547,65 +512,60 @@ private suspend fun testAllEndpoints(
 
 private suspend fun testEndpoint(endpoint: NetworkEndpoint): TestResult {
     return withContext(Dispatchers.IO) {
-        val responseTimes = mutableListOf<Long>()
-        var successCount = 0
+        val startTime = System.currentTimeMillis()
         var lastErrorMessage: String? = null
-        
-        repeat(3) {
-            val startTime = System.currentTimeMillis()
-            try {
+        var timedOut = false
+
+        try {
+            kotlinx.coroutines.withTimeout(1000L) {
                 val url = URL(endpoint.url)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "HEAD"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.connectTimeout = 1000
+                connection.readTimeout = 1000
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) NetworkTest/1.0")
-                
+
                 val responseCode = connection.responseCode
                 val responseTime = System.currentTimeMillis() - startTime
-                
+
                 connection.disconnect()
-                
+
                 if (responseCode in 200..399) {
-                    responseTimes.add(responseTime)
-                    successCount++
+                    TestResult(
+                        endpoint = endpoint,
+                        status = TestStatus.SUCCESS,
+                        responseTime = responseTime
+                    )
                 } else {
-                    lastErrorMessage = "HTTP $responseCode"
+                    TestResult(
+                        endpoint = endpoint,
+                        status = TestStatus.FAILED,
+                        responseTime = 0,
+                        errorMessage = "HTTP $responseCode"
+                    )
                 }
-            } catch (e: java.net.SocketTimeoutException) {
-                lastErrorMessage = "连接超时"
-            } catch (e: Exception) {
-                lastErrorMessage = e.message ?: "未知错误"
             }
-        }
-        
-        val avgResponseTime = if (responseTimes.isNotEmpty()) {
-            responseTimes.average().toLong()
-        } else 0L
-        
-        when {
-            successCount == 3 -> {
-                TestResult(
-                    endpoint = endpoint,
-                    status = TestStatus.SUCCESS,
-                    responseTime = avgResponseTime
-                )
-            }
-            successCount > 0 -> {
-                TestResult(
-                    endpoint = endpoint,
-                    status = TestStatus.SUCCESS,
-                    responseTime = avgResponseTime
-                )
-            }
-            else -> {
-                TestResult(
-                    endpoint = endpoint,
-                    status = TestStatus.FAILED,
-                    responseTime = 0,
-                    errorMessage = lastErrorMessage
-                )
-            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            TestResult(
+                endpoint = endpoint,
+                status = TestStatus.TIMEOUT,
+                responseTime = 0,
+                errorMessage = "连接超时"
+            )
+        } catch (e: java.net.SocketTimeoutException) {
+            TestResult(
+                endpoint = endpoint,
+                status = TestStatus.TIMEOUT,
+                responseTime = 0,
+                errorMessage = "连接超时"
+            )
+        } catch (e: Exception) {
+            TestResult(
+                endpoint = endpoint,
+                status = TestStatus.FAILED,
+                responseTime = 0,
+                errorMessage = e.message ?: "未知错误"
+            )
         }
     }
 }

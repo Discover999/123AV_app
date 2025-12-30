@@ -71,7 +71,6 @@ fun SearchScreen(
     var isFocused by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
         loadSearchHistory { history ->
             searchHistory = history
             if (history.isNotEmpty() && isFocused && searchQuery.isEmpty()) {
