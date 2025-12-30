@@ -1,7 +1,11 @@
 package com.android123av.app.screens
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,10 +16,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -35,18 +37,19 @@ import com.android123av.app.network.parseVideosFromHtml
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onVideoClick: (Video) -> Unit,
-    modifier: Modifier = Modifier
+    onVideoClick: (Video) -> Unit
 ) {
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isCategoryChanging by remember { mutableStateOf(false) }
     var currentPage by remember { mutableStateOf(1) }
     var hasNextPage by remember { mutableStateOf(true) }
     var hasPrevPage by remember { mutableStateOf(false) }
     var totalPages by remember { mutableStateOf(1) }
     var selectedCategory by remember { mutableStateOf("新发布") }
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
+    var refreshTrigger by remember { mutableStateOf(0) }
 
     fun getCategoryUrl(category: String): String {
         return when (category) {
@@ -58,18 +61,15 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(currentPage, selectedCategory) {
+    LaunchedEffect(currentPage, selectedCategory, refreshTrigger) {
         isLoading = true
+        isCategoryChanging = true
         try {
             val categoryUrl = getCategoryUrl(selectedCategory)
             val (newVideos, paginationInfo) = parseVideosFromHtml(
                 fetchVideosDataWithResponse(categoryUrl, currentPage).second
             )
-            if (currentPage == 1) {
-                videos = newVideos
-            } else {
-                videos = videos + newVideos
-            }
+            videos = newVideos
             hasNextPage = paginationInfo.hasNextPage
             hasPrevPage = paginationInfo.hasPrevPage
             totalPages = paginationInfo.totalPages
@@ -79,6 +79,7 @@ fun HomeScreen(
         } finally {
             isLoading = false
             isRefreshing = false
+            isCategoryChanging = false
         }
     }
 
@@ -133,7 +134,7 @@ fun HomeScreen(
                             imageVector = if (viewMode == ViewMode.LIST) {
                                 Icons.Default.Menu
                             } else {
-                                Icons.Default.MoreVert
+                                Icons.Default.Apps
                             },
                             contentDescription = "切换视图",
                             tint = MaterialTheme.colorScheme.primary
@@ -162,13 +163,14 @@ fun HomeScreen(
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = {
+                    refreshTrigger++
                     isRefreshing = true
-                    currentPage = 1
                 },
                 modifier = Modifier.fillMaxSize()
             ) {
                 Crossfade(
                     targetState = when {
+                        isCategoryChanging -> ContentState.CATEGORY_LOADING
                         isLoading && videos.isEmpty() -> ContentState.LOADING
                         videos.isEmpty() -> ContentState.EMPTY
                         else -> ContentState.CONTENT
@@ -177,6 +179,9 @@ fun HomeScreen(
                     label = "contentCrossfade"
                 ) { state ->
                     when (state) {
+                        ContentState.CATEGORY_LOADING -> {
+                            CategoryChangeLoading()
+                        }
                         ContentState.LOADING -> {
                             LoadingSkeleton()
                         }
@@ -193,6 +198,7 @@ fun HomeScreen(
                                         hasNextPage = hasNextPage,
                                         hasPrevPage = hasPrevPage,
                                         isLoading = isLoading,
+                                        isCategoryChanging = isCategoryChanging,
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- }
@@ -206,6 +212,7 @@ fun HomeScreen(
                                         hasNextPage = hasNextPage,
                                         hasPrevPage = hasPrevPage,
                                         isLoading = isLoading,
+                                        isCategoryChanging = isCategoryChanging,
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- }
@@ -221,6 +228,22 @@ fun HomeScreen(
 }
 
 @Composable
+private fun LoadingOverlay(isLoading: Boolean) {
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(48.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 4.dp
+            )
+        }
+    }
+}
+
+@Composable
 private fun VideoListContent(
     videos: List<Video>,
     currentPage: Int,
@@ -228,32 +251,37 @@ private fun VideoListContent(
     hasNextPage: Boolean,
     hasPrevPage: Boolean,
     isLoading: Boolean,
+    isCategoryChanging: Boolean,
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit
 ) {
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        items(videos, key = { it.id }) { video ->
-            VideoItem(
-                video = video,
-                onClick = { onVideoClick(video) }
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(videos, key = { it.id }) { video ->
+                VideoItem(
+                    video = video,
+                    onClick = { onVideoClick(video) }
+                )
+            }
+
+            item {
+                PaginationComponent(
+                    currentPage = currentPage,
+                    totalPages = totalPages,
+                    hasNextPage = hasNextPage,
+                    hasPrevPage = hasPrevPage,
+                    isLoading = isLoading,
+                    onLoadNext = onLoadNext,
+                    onLoadPrevious = onLoadPrevious
+                )
+            }
         }
 
-        item {
-            PaginationComponent(
-                currentPage = currentPage,
-                totalPages = totalPages,
-                hasNextPage = hasNextPage,
-                hasPrevPage = hasPrevPage,
-                isLoading = isLoading,
-                onLoadNext = onLoadNext,
-                onLoadPrevious = onLoadPrevious
-            )
-        }
+        LoadingOverlay(isLoading = isCategoryChanging)
     }
 }
 
@@ -265,34 +293,39 @@ private fun VideoGridContent(
     hasNextPage: Boolean,
     hasPrevPage: Boolean,
     isLoading: Boolean,
+    isCategoryChanging: Boolean,
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(videos, key = { it.id }) { video ->
-            VideoCardGridItem(
-                video = video,
-                onClick = { onVideoClick(video) }
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(videos, key = { it.id }) { video ->
+                VideoCardGridItem(
+                    video = video,
+                    onClick = { onVideoClick(video) }
+                )
+            }
+
+            item(span = { GridItemSpan(2) }) {
+                PaginationComponent(
+                    currentPage = currentPage,
+                    totalPages = totalPages,
+                    hasNextPage = hasNextPage,
+                    hasPrevPage = hasPrevPage,
+                    isLoading = isLoading,
+                    onLoadNext = onLoadNext,
+                    onLoadPrevious = onLoadPrevious
+                )
+            }
         }
 
-        item(span = { GridItemSpan(2) }) {
-            PaginationComponent(
-                currentPage = currentPage,
-                totalPages = totalPages,
-                hasNextPage = hasNextPage,
-                hasPrevPage = hasPrevPage,
-                isLoading = isLoading,
-                onLoadNext = onLoadNext,
-                onLoadPrevious = onLoadPrevious
-            )
-        }
+        LoadingOverlay(isLoading = isCategoryChanging)
     }
 }
 
@@ -340,10 +373,35 @@ private fun LoadingSkeleton() {
     }
 }
 
+@Composable
+private fun CategoryChangeLoading() {
+    val infiniteTransition = rememberInfiniteTransition(label = "loadingAnimation")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(48.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+            strokeWidth = 4.dp
+        )
+    }
+}
+
 enum class ViewMode {
     LIST, GRID
 }
 
 private enum class ContentState {
-    LOADING, EMPTY, CONTENT
+    LOADING, EMPTY, CONTENT, CATEGORY_LOADING
 }

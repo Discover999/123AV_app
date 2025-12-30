@@ -58,10 +58,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.10.1")
-    
+
     // 图片加载库
-    implementation("io.coil-kt:coil-compose:2.6.0")
-    
+    implementation(libs.coil.compose)
+
     // AndroidX Media3 视频播放库
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
@@ -70,6 +70,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation(libs.androidx.compose.foundation)
     implementation(libs.play.services.cast)
+    implementation(libs.androidx.compose.animation.core)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

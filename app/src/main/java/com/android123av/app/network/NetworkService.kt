@@ -12,8 +12,10 @@ import android.os.Looper
 import android.view.View
 import com.android123av.app.models.*
 import com.google.gson.Gson
+import kotlinx.coroutines.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -26,8 +28,306 @@ import okhttp3.HttpUrl
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.LinkedHashMap
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+
+// 视频URL缓存 - 使用LRU策略，内存中缓存最近访问的50个视频URL
+private val videoUrlCache = object : LinkedHashMap<String, String?>(50, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String?>?): Boolean {
+        return size > 50
+    }
+}
+
+// 缓存锁
+private val cacheLock = Any()
+
+/**
+ * 获取缓存的视频URL
+ */
+fun getCachedVideoUrl(videoId: String): String? {
+    synchronized(cacheLock) {
+        return videoUrlCache[videoId]
+    }
+}
+
+/**
+ * 缓存视频URL
+ */
+fun cacheVideoUrl(videoId: String, url: String?) {
+    synchronized(cacheLock) {
+        videoUrlCache[videoId] = url
+    }
+}
+
+/**
+ * 清除视频URL缓存
+ */
+fun clearVideoUrlCache() {
+    synchronized(cacheLock) {
+        videoUrlCache.clear()
+        println("DEBUG: 视频URL缓存已清除")
+    }
+}
+
+/**
+ * 从缓存中移除指定的视频URL
+ */
+fun removeVideoUrlFromCache(videoId: String) {
+    synchronized(cacheLock) {
+        videoUrlCache.remove(videoId)
+        println("DEBUG: 已从缓存中移除 videoId: $videoId")
+    }
+}
+
+/**
+ * 并行获取视频URL - 同时尝试HTTP和WebView方式，取最快返回的结果
+ * @param context Android上下文
+ * @param videoId 视频ID
+ * @param timeoutMs 超时时间（毫秒）
+ * @return 视频URL或null
+ */
+suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: String, timeoutMs: Long = 8000): String? = withContext(Dispatchers.IO) {
+    // 检查缓存
+    val cachedUrl = getCachedVideoUrl(videoId)
+    if (cachedUrl != null) {
+        println("DEBUG: [Parallel] 使用缓存的URL: $cachedUrl")
+        return@withContext cachedUrl
+    }
+    
+    // 检查是否是收藏视频
+    val isFavorite = videoId.startsWith("fav_")
+    
+    println("DEBUG: [Parallel] 开始并行获取视频URL, videoId: $videoId, timeout: ${timeoutMs}ms")
+    println("DEBUG: [Parallel] 是否是收藏视频: $isFavorite")
+    
+    val result = try {
+        withTimeout(timeoutMs) {
+            coroutineScope {
+                val httpDeferred = async {
+                    if (isFavorite) {
+                        null
+                    } else {
+                        fetchVideoUrlSync(videoId)
+                    }
+                }
+                
+                val webViewDeferred = async {
+                    fetchM3u8UrlWithWebViewFast(context, videoId)
+                }
+                
+                // 等待最快完成的结果
+                val result = try {
+                    select<Pair<String?, String?>> {
+                        httpDeferred.onAwait { httpResult -> 
+                            println("DEBUG: [Parallel] HTTP方式先返回: $httpResult")
+                            Pair(httpResult, "HTTP") 
+                        }
+                        webViewDeferred.onAwait { webViewResult -> 
+                            println("DEBUG: [Parallel] WebView方式先返回: $webViewResult")
+                            Pair(webViewResult, "WebView") 
+                        }
+                    }
+                } catch (e: Exception) {
+                    println("DEBUG: [Parallel] 并行获取异常: ${e.message}")
+                    // 尝试获取另一个结果
+                    val httpResult = try { httpDeferred.await() } catch (e: Exception) { null }
+                    val webViewResult = try { webViewDeferred.await() } catch (e: Exception) { null }
+                    Pair(httpResult ?: webViewResult, "Fallback")
+                }
+                
+                result.first
+            }
+        }
+    } catch (e: TimeoutCancellationException) {
+        println("DEBUG: [Parallel] 获取超时，尝试获取任何可用的结果")
+        // 超时后尝试获取任何可用的结果
+        val httpResult = try { fetchVideoUrlSync(videoId) } catch (e: Exception) { null }
+        if (httpResult != null) {
+            httpResult
+        } else {
+            try { 
+                fetchM3u8UrlWithWebViewFast(context, videoId, 3000) 
+            } catch (e: Exception) { 
+                null 
+            }
+        }
+    } catch (e: Exception) {
+        println("DEBUG: [Parallel] 获取异常: ${e.message}")
+        // 降级到传统方法
+        try {
+            if (isFavorite) {
+                fetchM3u8UrlWithWebView(context, videoId)
+            } else {
+                fetchVideoUrlSync(videoId) ?: fetchM3u8UrlWithWebView(context, videoId)
+            }
+        } catch (e2: Exception) {
+            null
+        }
+    }
+    
+    // 缓存结果
+    result?.let { url ->
+        cacheVideoUrl(videoId, url)
+        println("DEBUG: [Parallel] 缓存视频URL: $url")
+    }
+    
+    result
+}
+
+/**
+ * 同步获取视频URL（HTTP方式）
+ */
+private fun fetchVideoUrlSync(videoId: String): String? {
+    if (videoId.isBlank() || videoId.startsWith("fav_")) {
+        return null
+    }
+    
+    val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+    
+    val request = Request.Builder()
+        .url(videoDetailUrl)
+        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36")
+        .header("Accept", "*/*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .build()
+    
+    return try {
+        val response = okHttpClient.newCall(request).execute()
+        if (response.isSuccessful) {
+            val html = response.body?.string() ?: ""
+            val doc = Jsoup.parse(html)
+            
+            // 查找包含视频播放URL的元素
+            val videoElement = doc.selectFirst("video")
+            if (videoElement != null) {
+                val videoUrl = videoElement.attr("src")
+                if (videoUrl.isNotBlank()) {
+                    println("DEBUG: [HTTP] Found video URL in video element: $videoUrl")
+                    return videoUrl
+                }
+            }
+            
+            // 尝试从script标签中提取视频URL
+            val scriptElements = doc.select("script")
+            for (script in scriptElements) {
+                val scriptContent = script.data()
+                if (scriptContent.contains(".m3u8") || scriptContent.contains("source")) {
+                    val urlPattern = """(https?:\/\/[^"]+\.m3u8[^"]*)"""
+                    val matchResult = Regex(urlPattern).find(scriptContent)
+                    if (matchResult != null) {
+                        val foundUrl = matchResult.groups[1]?.value
+                        println("DEBUG: [HTTP] Found M3U8 URL in script: $foundUrl")
+                        return foundUrl
+                    }
+                }
+            }
+            
+            null
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        println("DEBUG: [HTTP] Exception: ${e.message}")
+        null
+    }
+}
+
+/**
+ * 快速WebView获取M3U8链接 - 优化版本，减少超时时间和开销
+ */
+suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoId: String, timeoutMs: Long = 5000): String? = withContext(Dispatchers.IO) {
+    if (videoId.isBlank()) {
+        return@withContext null
+    }
+    
+    val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+    val result = CompletableDeferred<String?>()
+    
+    println("DEBUG: [WebViewFast] 开始获取, timeout: ${timeoutMs}ms")
+    
+    // 在主线程创建WebView
+    withContext(Dispatchers.Main) {
+        var webView: WebView? = null
+        var timeoutHandler: Handler? = null
+        var timeoutRunnable: Runnable? = null
+        
+        val cleanup = {
+            try {
+                timeoutHandler?.removeCallbacks(timeoutRunnable!!)
+                webView?.stopLoading()
+                webView?.destroy()
+            } catch (e: Exception) {
+                // 忽略清理异常
+            }
+        }
+        
+        try {
+            // 检查上下文有效性
+            if (context is Activity && context.isFinishing) {
+                result.complete(null)
+                return@withContext
+            }
+            
+            webView = WebView(context)
+            val currentWebView = webView ?: return@withContext
+            
+            // 快速配置
+            val settings = currentWebView.settings
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            settings.cacheMode = WebSettings.LOAD_NO_CACHE
+            
+            // 最小化WebView设置
+            currentWebView.setLayerType(View.LAYER_TYPE_NONE, null)
+            
+            var foundResult = false
+            
+            currentWebView.webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    val url = request.url.toString().lowercase()
+                    
+                    if (foundResult || result.isCompleted) {
+                        return super.shouldInterceptRequest(view, request)
+                    }
+                    
+                    // 快速匹配视频URL
+                    if (url.endsWith(".m3u8") || url.contains(".m3u8?") || url.endsWith(".mp4")) {
+                        foundResult = true
+                        println("DEBUG: [WebViewFast] 拦截到视频链接: $url")
+                        result.complete(url)
+                        cleanup()
+                    }
+                    
+                    return super.shouldInterceptRequest(view, request)
+                }
+            }
+            
+            // 设置超时
+            timeoutHandler = Handler(context.mainLooper)
+            timeoutRunnable = Runnable {
+                if (!result.isCompleted) {
+                    foundResult = true
+                    result.complete(null)
+                    cleanup()
+                }
+            }
+            timeoutHandler.postDelayed(timeoutRunnable, timeoutMs)
+            
+            // 加载页面
+            currentWebView.loadUrl(videoDetailUrl)
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+            if (!result.isCompleted) result.complete(null)
+        }
+    }
+    
+    result.await()
+}
 
 // 全局变量用于存储PersistentCookieJar实例
 private var persistentCookieJar: PersistentCookieJar? = null
@@ -501,8 +801,7 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     val paginationInfo = parsePaginationInfo(doc)
     
     println("DEBUG: parseVideosFromHtml - 解析到 ${videos.size} 个视频")
-    println("DEBUG: parseVideosFromHtml - 分页信息: 当前页=${paginationInfo.currentPage}, 总页数=${paginationInfo.totalPages}, 有下一页=${paginationInfo.hasNextPage}, 有上一页=${paginationInfo.hasPrevPage}")
-    
+
     return Pair(videos, paginationInfo)
 }
 

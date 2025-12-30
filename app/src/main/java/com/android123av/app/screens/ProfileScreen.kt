@@ -150,7 +150,8 @@ fun ProfileScreen(
     isLoggedIn: Boolean,
     user: User?,
     onLogout: () -> Unit,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    onNavigateToNetworkTest: () -> Unit = {}
 ) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
@@ -236,6 +237,13 @@ fun ProfileScreen(
                     title = "设置",
                     subtitle = "应用设置",
                     onClick = { }
+                )
+
+                MenuItem(
+                    icon = Icons.Default.Wifi,
+                    title = "网络连接测试",
+                    subtitle = "检测服务器连接状态",
+                    onClick = { onNavigateToNetworkTest() }
                 )
                 
                 MenuItem(

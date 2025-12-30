@@ -17,6 +17,9 @@ object UserStateManager {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_USER_NAME = "user_name"
     private const val KEY_USER_EMAIL = "user_email"
+    private const val KEY_REMEMBER_ME = "remember_me"
+    private const val KEY_SAVED_USERNAME = "saved_username"
+    private const val KEY_SAVED_PASSWORD = "saved_password"
     
     private var sharedPreferences: SharedPreferences? = null
     
@@ -26,6 +29,9 @@ object UserStateManager {
     var userEmail by mutableStateOf("")
     var isLoggingIn by mutableStateOf(false)
     var loginError by mutableStateOf("")
+    var rememberMe by mutableStateOf(false)
+    var savedUsername by mutableStateOf("")
+    var savedPassword by mutableStateOf("")
     
     // 登录成功时的回调监听器
     private var loginSuccessListener: (() -> Unit)? = null
@@ -52,8 +58,16 @@ object UserStateManager {
             val savedUserId = prefs.getString(KEY_USER_ID, "") ?: ""
             val savedUserName = prefs.getString(KEY_USER_NAME, "") ?: ""
             val savedUserEmail = prefs.getString(KEY_USER_EMAIL, "") ?: ""
+            val prefsRememberMe = prefs.getBoolean(KEY_REMEMBER_ME, false)
+            val prefsSavedUsername = prefs.getString(KEY_SAVED_USERNAME, "") ?: ""
+            val prefsSavedPassword = prefs.getString(KEY_SAVED_PASSWORD, "") ?: ""
             
             println("DEBUG: Loaded from SharedPreferences - isLoggedIn: $savedIsLoggedIn, userId: $savedUserId, userName: $savedUserName, userEmail: $savedUserEmail")
+            
+            // 恢复记住我的设置
+            rememberMe = prefsRememberMe
+            savedUsername = prefsSavedUsername
+            savedPassword = prefsSavedPassword
             
             // 如果已登录，验证登录状态是否仍然有效
             if (savedIsLoggedIn) {
@@ -95,8 +109,32 @@ object UserStateManager {
             putString(KEY_USER_ID, userId)
             putString(KEY_USER_NAME, userName)
             putString(KEY_USER_EMAIL, userEmail)
+            putBoolean(KEY_REMEMBER_ME, rememberMe)
+            putString(KEY_SAVED_USERNAME, if (rememberMe) savedUsername else "")
+            putString(KEY_SAVED_PASSWORD, if (rememberMe) savedPassword else "")
             apply()
         }
+    }
+    
+    // 更新记住我状态和保存的账号密码
+    fun updateRememberMe(enabled: Boolean, username: String = "", password: String = "") {
+        rememberMe = enabled
+        if (enabled) {
+            savedUsername = username
+            savedPassword = password
+        } else {
+            savedUsername = ""
+            savedPassword = ""
+        }
+        saveUserInfo()
+    }
+    
+    // 清除记住的密码
+    fun clearSavedCredentials() {
+        rememberMe = false
+        savedUsername = ""
+        savedPassword = ""
+        saveUserInfo()
     }
     
     // 设置登录成功监听器
@@ -173,6 +211,9 @@ object UserStateManager {
         userName = ""
         userEmail = ""
         loginError = ""
+        if (!rememberMe) {
+            clearSavedCredentials()
+        }
         saveUserInfo()
         
         // 清除cookies，确保下次打开app不会自动登录

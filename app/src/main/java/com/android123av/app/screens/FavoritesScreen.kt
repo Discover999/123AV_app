@@ -5,6 +5,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -48,11 +51,7 @@ fun FavoritesScreen(
             try {
                 val (videos, pagination) = fetchUserFavorites(page)
                 println("DEBUG: fetchUserFavorites returned - videos.size=${videos.size}, pagination=$pagination")
-                if (page == 1) {
-                    favoriteVideos = videos
-                } else {
-                    favoriteVideos = favoriteVideos + videos
-                }
+                favoriteVideos = videos
                 if (pagination.totalPages > 0) {
                     totalPages = pagination.totalPages
                 }
@@ -61,9 +60,7 @@ fun FavoritesScreen(
                 println("DEBUG: FavoritesScreen - Loaded ${videos.size} favorite videos, currentPage=$page, hasNextPage=$hasNextPage, hasPrevPage=$hasPrevPage")
             } catch (e: Exception) {
                 println("DEBUG: FavoritesScreen - Error loading favorites: ${e.message}")
-                if (page == 1) {
-                    favoriteVideos = emptyList()
-                }
+                favoriteVideos = emptyList()
             } finally {
                 isLoading = false
                 println("DEBUG: loadFavorites completed - isLoading=$isLoading")
@@ -118,6 +115,12 @@ fun FavoritesScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(16.dp)
                         ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = "收藏提示",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                modifier = Modifier.size(64.dp)
+                            )
                             Text(
                                 text = "暂无收藏视频",
                                 style = MaterialTheme.typography.headlineSmall,
