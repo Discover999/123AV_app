@@ -67,6 +67,7 @@ val playbackSpeeds = listOf(
     PlaybackSpeed(2.0f, "2.0x")
 )
 
+@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
@@ -297,12 +298,14 @@ fun VideoPlayerScreen(
             }
         )
         videoUrl != null -> {
-            if (isFullscreen) {
-                Box(
-                    modifier = modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                ) {
+            Column(modifier = modifier.fillMaxWidth()) {
+                val playerModifier = if (isFullscreen) {
+                    Modifier.fillMaxWidth().fillMaxHeight()
+                } else {
+                    Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                }
+
+                Box(modifier = playerModifier) {
                     AndroidView(
                         factory = { ctx ->
                             PlayerView(ctx).apply {
@@ -311,53 +314,53 @@ fun VideoPlayerScreen(
                                     setMediaSource(source)
                                     prepare()
                                     playWhenReady = true
-
                                     setupPlayerListener(this)
                                 }
                                 exoPlayer = player
                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                useController = true
+                                useController = false
                             }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-                }
-            } else {
-                Column(
-                    modifier = modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
-                    ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                PlayerView(ctx).apply {
-                                    player = ExoPlayer.Builder(ctx).build().apply {
-                                        val source = createMediaSource(videoUrl!!)
-                                        setMediaSource(source)
-                                        prepare()
-                                        playWhenReady = true
 
-                                        setupPlayerListener(this)
-                                    }
-                                    exoPlayer = player
-                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                    useController = true
+                    PlayerControls(
+                        exoPlayer = exoPlayer,
+                        isFullscreen = isFullscreen,
+                        isLocked = isLocked,
+                        showSpeedSelector = showSpeedSelector,
+                        currentSpeedIndex = currentSpeedIndex,
+                        controlsAlpha = controlsAlpha,
+                        showControls = showControls,
+                        lastInteractionTime = lastInteractionTime,
+                        onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                        onFullscreen = { isFullscreen = !isFullscreen },
+                        onLock = { isLocked = !isLocked },
+                        onSpeedChange = { currentSpeedIndex = it },
+                        onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                        onPlayPause = {
+                            exoPlayer?.let { player ->
+                                if (player.isPlaying) {
+                                    player.pause()
+                                } else {
+                                    player.play()
                                 }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                            }
+                        },
+                        onShowControls = { showControls = true },
+                        onHideControls = { showControls = false },
+                        onUpdateInteractionTime = { updateInteractionTime() },
+                        onHideControlsNow = { hideControls() },
+                        onShowControlsTemporarily = { showControlsTemporarily() }
+                    )
+                }
 
-                    if (videoDetails != null) {
-                        VideoInfoSection(
-                            video = video,
-                            videoDetails = videoDetails!!,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                if (!isFullscreen && videoDetails != null) {
+                    VideoInfoSection(
+                        video = video,
+                        videoDetails = videoDetails!!,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -805,20 +808,29 @@ private fun PlayPauseButton(
     onClick: () -> Unit
 ) {
     val scale by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        targetValue = if (isPlaying) 0.9f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "playPauseScale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(150),
+        label = "playPauseAlpha"
     )
 
     IconButton(
         onClick = onClick,
         modifier = Modifier
             .scale(scale)
+            .alpha(alpha)
             .size(72.dp)
             .background(
                 color = MaterialTheme.colorScheme.primary,
                 shape = CircleShape
             )
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() })
+            }
     ) {
         Icon(
             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -836,14 +848,29 @@ private fun ControlButton(
     contentDescription: String,
     size: androidx.compose.ui.unit.Dp = 44.dp
 ) {
+    val scale by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "controlButtonScale"
+    )
+
     IconButton(
         onClick = onClick,
         modifier = Modifier
+            .scale(scale)
             .size(size)
             .background(
                 color = Color.Black.copy(alpha = 0.4f),
                 shape = CircleShape
             )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        tryAwaitRelease()
+                        onClick()
+                    }
+                )
+            }
     ) {
         Icon(
             imageVector = icon,
@@ -885,12 +912,41 @@ private fun BottomBar(
             )
         }
 
-        ProgressBar(
-            currentPosition = currentPosition,
-            duration = duration,
-            progress = progress,
-            onSeek = onSeek
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = formatTime(currentPosition),
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 11.sp,
+                modifier = Modifier.width(44.dp)
+            )
+
+            Slider(
+                value = progress,
+                onValueChange = onSeek,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                )
+            )
+
+            Text(
+                text = formatTime(duration),
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 11.sp,
+                modifier = Modifier.width(44.dp)
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -899,12 +955,7 @@ private fun BottomBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = formatTime(currentPosition),
-                color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.width(56.dp)
-            )
+            Spacer(modifier = Modifier.width(48.dp))
 
             TextButton(
                 onClick = onSpeedSelectorToggle,
@@ -924,12 +975,7 @@ private fun BottomBar(
                 )
             }
 
-            Text(
-                text = formatTime(duration),
-                color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.width(56.dp)
-            )
+            Spacer(modifier = Modifier.width(48.dp))
         }
     }
 }
@@ -1021,171 +1067,6 @@ private fun CenterLoadingIndicator() {
         CircularProgressIndicator(
             color = MaterialTheme.colorScheme.primary
         )
-    }
-}
-
-@Composable
-private fun BottomControlBar(
-    showSpeedSelector: Boolean,
-    currentSpeedIndex: Int,
-    currentPosition: Long,
-    duration: Long,
-    progress: Float,
-    onSpeedSelectorToggle: () -> Unit,
-    onSpeedChange: (Int) -> Unit,
-    onSeek: (Float) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        if (showSpeedSelector) {
-            PlaybackSpeedSelector(
-                currentIndex = currentSpeedIndex,
-                onSpeedSelect = onSpeedChange,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-
-        ProgressSlider(
-            currentPosition = currentPosition,
-            duration = duration,
-            progress = progress,
-            onSeek = onSeek
-        )
-
-        SpeedControlRow(
-            currentSpeedIndex = currentSpeedIndex,
-            onSpeedSelectorToggle = onSpeedSelectorToggle
-        )
-    }
-}
-
-@Composable
-private fun ProgressSlider(
-    currentPosition: Long,
-    duration: Long,
-    progress: Float,
-    onSeek: (Float) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = formatTime(currentPosition),
-            color = Color.White,
-            style = MaterialTheme.typography.bodySmall,
-            fontSize = 12.sp
-        )
-
-        Slider(
-            value = progress,
-            onValueChange = onSeek,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 8.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-            )
-        )
-
-        Text(
-            text = formatTime(duration),
-            color = Color.White,
-            style = MaterialTheme.typography.bodySmall,
-            fontSize = 12.sp
-        )
-    }
-}
-
-@Composable
-private fun SpeedControlRow(
-    currentSpeedIndex: Int,
-    onSpeedSelectorToggle: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onSpeedSelectorToggle,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Text(
-                    text = playbackSpeeds[currentSpeedIndex].label,
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LockedStateOverlay(onUnlock: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onUnlock() })
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Default.Lock,
-            contentDescription = "已锁定",
-            tint = Color.White.copy(alpha = 0.7f),
-            modifier = Modifier.size(48.dp)
-        )
-    }
-}
-
-@Composable
-private fun BufferingIndicator() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.3f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier.size(100.dp),
-            shape = CircleShape,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-            )
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(32.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 3.dp
-                    )
-                    Text(
-                        text = "缓冲中...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1317,35 +1198,6 @@ private fun IdleIndicator() {
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PlaybackSpeedSelector(
-    currentIndex: Int,
-    onSpeedSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.6f))
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        playbackSpeeds.forEachIndexed { index, speed ->
-            Text(
-                text = speed.label,
-                color = if (index == currentIndex) MaterialTheme.colorScheme.primary else Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (index == currentIndex) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { onSpeedSelect(index) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            )
         }
     }
 }
