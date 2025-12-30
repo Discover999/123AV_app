@@ -137,7 +137,6 @@ fun HomeScreen(
                                 Icons.Default.Apps
                             },
                             contentDescription = "切换视图",
-                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -267,7 +266,6 @@ private fun VideoListContent(
                     onClick = { onVideoClick(video) }
                 )
             }
-
             item {
                 PaginationComponent(
                     currentPage = currentPage,
@@ -280,7 +278,6 @@ private fun VideoListContent(
                 )
             }
         }
-
         LoadingOverlay(isLoading = isCategoryChanging)
     }
 }
@@ -311,7 +308,6 @@ private fun VideoGridContent(
                     onClick = { onVideoClick(video) }
                 )
             }
-
             item(span = { GridItemSpan(2) }) {
                 PaginationComponent(
                     currentPage = currentPage,
@@ -324,7 +320,6 @@ private fun VideoGridContent(
                 )
             }
         }
-
         LoadingOverlay(isLoading = isCategoryChanging)
     }
 }

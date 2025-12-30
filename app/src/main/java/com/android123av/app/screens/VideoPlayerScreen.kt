@@ -1,53 +1,71 @@
 package com.android123av.app.screens
 
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.annotation.OptIn
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.*
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
-import androidx.media3.exoplayer.dash.DashMediaSource
-import androidx.media3.exoplayer.dash.DefaultDashChunkSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import android.widget.Toast
-import androidx.annotation.OptIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.media3.common.util.UnstableApi
 import com.android123av.app.models.Video
 import com.android123av.app.models.VideoDetails
-import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchM3u8UrlWithWebView
-import com.android123av.app.network.fetchVideoUrlParallel
 import com.android123av.app.network.fetchVideoDetails
+import com.android123av.app.network.fetchVideoUrl
+import com.android123av.app.network.fetchVideoUrlParallel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// 视频播放器屏幕
+data class PlaybackSpeed(
+    val speed: Float,
+    val label: String
+)
+
+val playbackSpeeds = listOf(
+    PlaybackSpeed(0.5f, "0.5x"),
+    PlaybackSpeed(0.75f, "0.75x"),
+    PlaybackSpeed(1.0f, "1.0x"),
+    PlaybackSpeed(1.25f, "1.25x"),
+    PlaybackSpeed(1.5f, "1.5x"),
+    PlaybackSpeed(1.75f, "1.75x"),
+    PlaybackSpeed(2.0f, "2.0x")
+)
+
 @OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
@@ -55,641 +73,283 @@ fun VideoPlayerScreen(
     video: Video,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
+
     var isLoading by remember { mutableStateOf(true) }
     var videoUrl by remember { mutableStateOf<String?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var showControls by remember { mutableStateOf(true) }
-    var currentPosition by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    var isVideoLoading by remember { mutableStateOf(true) }
-    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
     var videoDetails by remember { mutableStateOf<VideoDetails?>(null) }
     var isLoadingDetails by remember { mutableStateOf(false) }
-    
-    val coroutineScope = rememberCoroutineScope()
-    val context = LocalContext.current
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // 获取视频URL - 优化的并行获取方式
+    var exoPlayer by remember { mutableStateOf<Player?>(null) }
+    var showControls by remember { mutableStateOf(true) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    var isLocked by remember { mutableStateOf(false) }
+    var showSpeedSelector by remember { mutableStateOf(false) }
+    var currentSpeedIndex by remember { mutableIntStateOf(2) }
+
+    val controlsAlpha by animateFloatAsState(
+        targetValue = if (showControls && !isLocked) 1f else 0f,
+        animationSpec = tween(300),
+        label = "controlsAlpha"
+    )
+
+    val hideControlsJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    fun scheduleHideControls() {
+        hideControlsJob.value?.cancel()
+        if (exoPlayer?.isPlaying == true) {
+            hideControlsJob.value = coroutineScope.launch {
+                delay(3000)
+                showControls = false
+            }
+        }
+    }
+
+    fun showControlsTemporarily() {
+        showControls = true
+        scheduleHideControls()
+    }
+
+    fun createMediaSource(url: String): MediaSource {
+        val factory = DefaultHttpDataSource.Factory()
+        return if (url.contains(".m3u8")) {
+            HlsMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(url))
+        } else {
+            ProgressiveMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(url))
+        }
+    }
+
     LaunchedEffect(video) {
         isLoading = true
+        errorMessage = null
         try {
-            println("DEBUG: VideoPlayerScreen - 开始获取视频URL")
-            println("DEBUG: videoId: ${video.id}")
-            println("DEBUG: video title: ${video.title}")
-            
-            // 检查视频是否有直接的videoUrl
             if (!video.videoUrl.isNullOrBlank()) {
-                println("DEBUG: 使用现有的videoUrl: ${video.videoUrl}")
                 videoUrl = video.videoUrl
             } else {
-                // 使用并行获取方式，同时尝试HTTP和WebView
-                println("DEBUG: 使用并行方式获取视频URL...")
                 videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                println("DEBUG: 并行获取结果: $videoUrl")
-                
-                // 如果并行获取失败，尝试传统方式作为备选
                 if (videoUrl == null) {
-                    println("DEBUG: 并行获取失败，尝试传统方式...")
-                    
-                    // 先尝试HTTP
                     val httpUrl = fetchVideoUrl(video.id)
                     if (httpUrl != null && httpUrl.contains(".m3u8")) {
                         videoUrl = httpUrl
-                        println("DEBUG: HTTP方式成功: $videoUrl")
                     } else {
-                        // 尝试WebView
                         videoUrl = fetchM3u8UrlWithWebView(context, video.id)
-                        println("DEBUG: WebView方式结果: $videoUrl")
                     }
                 }
             }
-            
             if (videoUrl == null) {
-                Toast.makeText(context, "无法获取视频播放地址", Toast.LENGTH_SHORT).show()
+                errorMessage = "无法获取视频播放地址"
             }
         } catch (e: Exception) {
-            println("DEBUG: 获取视频URL异常: ${e.message}")
-            e.printStackTrace()
-            Toast.makeText(context, "获取视频URL失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            errorMessage = "获取视频失败: ${e.message}"
         } finally {
             isLoading = false
         }
     }
 
-    // 获取视频详情信息
     LaunchedEffect(video) {
-        if (video.details == null) { // 如果视频对象中没有详情信息，则从网络获取
+        if (video.details == null) {
             isLoadingDetails = true
             try {
-                val details = fetchVideoDetails(video.id)
-                videoDetails = details
+                videoDetails = fetchVideoDetails(video.id)
             } catch (e: Exception) {
                 e.printStackTrace()
-                println("DEBUG: 获取视频详情失败: ${e.message}")
             } finally {
                 isLoadingDetails = false
             }
         } else {
-            // 如果视频对象中已有详情信息，直接使用
             videoDetails = video.details
         }
     }
 
-    // 更新播放进度
-    LaunchedEffect(exoPlayer) {
-        exoPlayer?.let { player ->
-            while (true) {
-                if (player.isPlaying) {
-                    val newPosition = player.currentPosition
-                    val newDuration = player.duration
-                    val newProgress = if (newDuration > 0) newPosition.toFloat() / newDuration.toFloat() else 0f
-                    
-                    currentPosition = newPosition
-                    duration = newDuration
-                    progress = newProgress
-                }
-                kotlinx.coroutines.delay(100) // 每100ms更新一次
-            }
-        }
+    BackHandler(isFullscreen) {
+        isFullscreen = false
     }
 
-    // 释放播放器资源
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer?.release()
+            hideControlsJob.value?.cancel()
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        when {
-            isLoading -> {
-                // 优化的加载界面
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(56.dp),
-                            strokeWidth = 4.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = "正在加载视频...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = video.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 32.dp)
-                        )
-                    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> exoPlayer?.pause()
+                Lifecycle.Event.ON_RESUME -> {
+                    if (exoPlayer?.isPlaying == true) exoPlayer?.play()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                if (!isLocked) {
+                    showControlsTemporarily()
                 }
             }
-            
-            videoUrl != null && videoUrl!!.isNotEmpty() -> {
-                // 优化的视频播放区域
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // 视频播放区域 (16:9 比例)
+    ) {
+        when {
+            isLoading -> LoadingState(video.title)
+            errorMessage != null -> VideoErrorState(errorMessage!!) { onBack() }
+            videoUrl != null -> {
+                if (isFullscreen) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
-                            .background(Color.Black)
+                            .fillMaxHeight()
+                            .align(Alignment.TopCenter)
                     ) {
-                        // ExoPlayer 视频播放
                         AndroidView(
-                            factory = { context ->
-                                PlayerView(context).apply {
-                                    val exoPlayerInstance = ExoPlayer.Builder(context).build().apply {
-                                        // 创建合适的MediaSource
-                                        val mediaSource = createMediaSource(videoUrl!!)
-                                        setMediaSource(mediaSource)
+                            factory = { ctx ->
+                                PlayerView(ctx).apply {
+                                    player = ExoPlayer.Builder(ctx).build().apply {
+                                        val source = createMediaSource(videoUrl!!)
+                                        setMediaSource(source)
                                         prepare()
-                                        
-                                        // 设置播放状态监听
+                                        playWhenReady = true
+
                                         addListener(object : Player.Listener {
                                             override fun onPlaybackStateChanged(state: Int) {
                                                 when (state) {
-                                                    Player.STATE_READY -> {
-                                                        isVideoLoading = false
-                                                        // 自动开始播放
-                                                        play()
-                                                    }
-                                                    Player.STATE_BUFFERING -> {
-                                                        isVideoLoading = true
+                                                    Player.STATE_READY -> scheduleHideControls()
+                                                    Player.STATE_ENDED -> {
+                                                        showControls = true
+                                                        hideControlsJob.value?.cancel()
                                                     }
                                                 }
                                             }
-                                            
+
                                             override fun onIsPlayingChanged(playing: Boolean) {
-                                                isPlaying = playing
+                                                if (playing) scheduleHideControls()
                                             }
-                                            
+
                                             override fun onPlayerError(error: PlaybackException) {
-                                                isVideoLoading = false
-                                                Toast.makeText(context, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(ctx, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
                                             }
                                         })
                                     }
-                                    player = exoPlayerInstance
-                                    exoPlayer = exoPlayerInstance
+                                    exoPlayer = player
                                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                    useController = false // 使用自定义控制界面
-                                    
-                                    // 点击显示/隐藏控制界面
-                                    setOnClickListener {
-                                        showControls = !showControls
-                                    }
+                                    useController = false
                                 }
                             },
                             modifier = Modifier.fillMaxSize()
                         )
-                        
-                        // 优化的自定义播放控制界面
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = showControls,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                Color.Black.copy(alpha = 0.1f),
-                                                Color.Black.copy(alpha = 0.3f),
-                                                Color.Black.copy(alpha = 0.7f)
-                                            ),
-                                            startY = 0f,
-                                            endY = Float.POSITIVE_INFINITY
-                                        )
-                                    )
-                            ) {
-                                // 顶部控制栏
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // 返回按钮
-                                    IconButton(
-                                        onClick = onBack,
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .background(
-                                                Color.Black.copy(alpha = 0.5f),
-                                                CircleShape
-                                            )
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "返回",
-                                            tint = Color.White
-                                        )
-                                    }
-                                    
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    
-                                    // 其他控制按钮可以在这里添加
-                                }
-                                
-                                // 中央播放/暂停按钮
-                                IconButton(
-                                    onClick = {
-                                        exoPlayer?.let { player ->
-                                            if (player.isPlaying) {
-                                                player.pause()
-                                            } else {
-                                                player.play()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(80.dp)
-                                        .background(
-                                            Color.Black.copy(alpha = 0.5f),
-                                            CircleShape
-                                        )
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(40.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isPlaying) {
-                                            // 自定义暂停图标 (两个竖条)
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(4.dp)
-                                                        .height(20.dp)
-                                                        .background(Color.White)
-                                                )
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(4.dp)
-                                                        .height(20.dp)
-                                                        .background(Color.White)
-                                                )
-                                            }
-                                        } else {
-                                            // 播放图标
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = "播放",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                
-                                // 底部进度条区域
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .fillMaxWidth()
-                                        .padding(16.dp)
-                                ) {
-                                    // 进度条
-                                    Slider(
-                                        value = progress,
-                                        onValueChange = { value ->
-                                            exoPlayer?.let { player ->
-                                                val newPosition = (value * player.duration).toLong()
-                                                player.seekTo(newPosition)
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = Color.White,
-                                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                                        )
-                                    )
-                                    
-                                    // 时间显示
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = formatTime(currentPosition),
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontSize = 12.sp
-                                        )
-                                        Text(
-                                            text = formatTime(duration),
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
-                                
-                                // 加载指示器
-                                if (isVideoLoading) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.align(Alignment.Center),
-                                        color = Color.White,
-                                        strokeWidth = 4.dp
-                                    )
+
+                        PlayerControls(
+                            exoPlayer = exoPlayer,
+                            isFullscreen = true,
+                            isLocked = isLocked,
+                            showSpeedSelector = showSpeedSelector,
+                            currentSpeedIndex = currentSpeedIndex,
+                            controlsAlpha = controlsAlpha,
+                            onBack = { isFullscreen = false },
+                            onFullscreen = { isFullscreen = false },
+                            onLock = { isLocked = !isLocked },
+                            onSpeedChange = { index ->
+                                currentSpeedIndex = index
+                                exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+                                showSpeedSelector = false
+                            },
+                            onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                            onPlayPause = {
+                                exoPlayer?.let { player ->
+                                    if (player.isPlaying) player.pause() else player.play()
                                 }
                             }
-                        }
-                    }
-                    
-                    // 视频信息区域
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
-                    ) {
-                        // 视频标题
-                        Text(
-                            text = video.title,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
                         )
-                        
-                        // 视频元信息
-                        Card(
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                            ),
-                            elevation = CardDefaults.cardElevation(
-                                defaultElevation = 2.dp
-                            )
+                                .aspectRatio(16f / 9f)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp)
-                            ) {
-                                // 基础信息
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "视频时长",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = video.duration,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                    
-                                    Column {
-                                        Text(
-                                            text = "视频ID",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = video.id,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                                
-                                // 显示解析的视频详情
-                                if (isLoadingDetails) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 16.dp),
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "正在加载视频详情...",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else if (videoDetails != null) {
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    
-                                    // 代码
-                                    if (videoDetails!!.code.isNotEmpty()) {
-                                        Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                                            Text(
-                                                text = "代码",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = videoDetails!!.code,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                    
-                                    // 发布日期
-                                    if (videoDetails!!.releaseDate.isNotEmpty()) {
-                                        Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                                            Text(
-                                                text = "发布日期",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = videoDetails!!.releaseDate,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                    
-                                    // 类型
-                                    if (videoDetails!!.genres.isNotEmpty()) {
-                                        Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                                            Text(
-                                                text = "类型",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = videoDetails!!.genres.joinToString(", "),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                    
-                                    // 制作人
-                                    if (videoDetails!!.maker.isNotEmpty()) {
-                                        Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                                            Text(
-                                                text = "制作人",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = videoDetails!!.maker,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                    
-                                    // 标签
-                                    if (videoDetails!!.tags.isNotEmpty()) {
-                                        Column {
-                                            Text(
-                                                text = "标签",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = videoDetails!!.tags.joinToString(", "),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        // 操作按钮
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = { /* 刷新视频 */ },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "刷新",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("刷新")
-                            }
-                            
-                            OutlinedButton(
-                                onClick = { /* 分享功能 */ },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("分享")
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                    }
-                }
-            }
-            
-            else -> {
-                // 优化的错误界面
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = "加载失败",
-                            modifier = Modifier.size(80.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = "无法加载视频",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "请检查网络连接或稍后重试",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(onClick = onBack) {
-                                Text("返回")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    // 重新尝试加载 - 使用并行方式
-                                    isLoading = true
-                                    coroutineScope.launch {
-                                        try {
-                                            videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                                            
-                                            // 如果并行获取失败，使用传统方式备选
-                                            if (videoUrl == null) {
-                                                val httpUrl = fetchVideoUrl(video.id)
-                                                if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                                    videoUrl = httpUrl
-                                                } else {
-                                                    videoUrl = fetchM3u8UrlWithWebView(context, video.id)
+                            AndroidView(
+                                factory = { ctx ->
+                                    PlayerView(ctx).apply {
+                                        player = ExoPlayer.Builder(ctx).build().apply {
+                                            val source = createMediaSource(videoUrl!!)
+                                            setMediaSource(source)
+                                            prepare()
+                                            playWhenReady = true
+
+                                            addListener(object : Player.Listener {
+                                                override fun onPlaybackStateChanged(state: Int) {
+                                                    when (state) {
+                                                        Player.STATE_READY -> scheduleHideControls()
+                                                        Player.STATE_ENDED -> {
+                                                            showControls = true
+                                                            hideControlsJob.value?.cancel()
+                                                        }
+                                                    }
                                                 }
-                                            }
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                            Toast.makeText(context, "重新加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        } finally {
-                                            isLoading = false
+
+                                                override fun onIsPlayingChanged(playing: Boolean) {
+                                                    if (playing) scheduleHideControls()
+                                                }
+
+                                                override fun onPlayerError(error: PlaybackException) {
+                                                    Toast.makeText(ctx, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            })
                                         }
+                                        exoPlayer = player
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        useController = false
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            PlayerControls(
+                                exoPlayer = exoPlayer,
+                                isFullscreen = false,
+                                isLocked = isLocked,
+                                showSpeedSelector = showSpeedSelector,
+                                currentSpeedIndex = currentSpeedIndex,
+                                controlsAlpha = controlsAlpha,
+                                onBack = onBack,
+                                onFullscreen = { isFullscreen = true },
+                                onLock = { isLocked = !isLocked },
+                                onSpeedChange = { index ->
+                                    currentSpeedIndex = index
+                                    exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+                                    showSpeedSelector = false
+                                },
+                                onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                onPlayPause = {
+                                    exoPlayer?.let { player ->
+                                        if (player.isPlaying) player.pause() else player.play()
                                     }
                                 }
-                            ) {
-                                Text("重新加载")
-                            }
+                            )
+                        }
+
+                        if (videoDetails != null) {
+                            VideoInfoSection(
+                                video = video,
+                                videoDetails = videoDetails!!,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
@@ -698,36 +358,451 @@ fun VideoPlayerScreen(
     }
 }
 
-// 格式化时间的辅助函数
-fun formatTime(millis: Long): String {
-    val totalSeconds = millis / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format("%02d:%02d", minutes, seconds)
-}
-
-// 创建媒体源的辅助函数
-@OptIn(UnstableApi::class)
-fun createMediaSource(url: String): MediaSource {
-    val dataSourceFactory = DefaultHttpDataSource.Factory()
-    
-    return if (url.contains(".m3u8")) {
-        // HLS视频源
-        HlsMediaSource.Factory(dataSourceFactory)
-            .setExtractorFactory(DefaultHlsExtractorFactory())
-            .createMediaSource(MediaItem.fromUri(url))
-    } else if (url.contains(".mpd")) {
-        // DASH视频源
-        DashMediaSource.Factory(
-            DefaultDashChunkSource.Factory(dataSourceFactory),
-            dataSourceFactory
-        )
-            .createMediaSource(MediaItem.fromUri(url))
-    } else {
-        // 普通视频源
-        ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(url))
+@Composable
+private fun LoadingState(title: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(56.dp),
+                strokeWidth = 4.dp,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "正在加载视频...",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 32.dp),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
+@Composable
+private fun VideoErrorState(
+    message: String,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Error,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = Color.White.copy(alpha = 0.6f)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = onBack,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text("返回")
+            }
+        }
+    }
+}
 
+@Composable
+private fun PlayerControls(
+    exoPlayer: Player?,
+    isFullscreen: Boolean,
+    isLocked: Boolean,
+    showSpeedSelector: Boolean,
+    currentSpeedIndex: Int,
+    controlsAlpha: Float,
+    onBack: () -> Unit,
+    onFullscreen: () -> Unit,
+    onLock: () -> Unit,
+    onSpeedChange: (Int) -> Unit,
+    onSpeedSelectorToggle: () -> Unit,
+    onPlayPause: () -> Unit
+) {
+    val playbackState = exoPlayer?.playbackState
+    val isPlaying = exoPlayer?.isPlaying == true
+    val currentPosition = exoPlayer?.currentPosition ?: 0L
+    val duration = exoPlayer?.duration ?: 0L
+    val bufferedPosition = exoPlayer?.bufferedPosition ?: 0L
+    val progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
+    val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(controlsAlpha)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.6f),
+                            Color.Transparent,
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.8f)
+                        )
+                    )
+                )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp, start = 12.dp, end = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        if (isFullscreen) {
+                            onFullscreen()
+                        } else {
+                            onBack()
+                        }
+                    },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = Color.White
+                    )
+                }
+
+                if (!isLocked) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(
+                            onClick = onLock,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "锁定",
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(
+                            onClick = onFullscreen,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = "全屏",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!isLocked) {
+                        IconButton(
+                            onClick = {
+                                exoPlayer?.let { player ->
+                                    val newPosition = (currentPosition - 10000).coerceAtLeast(0)
+                                    player.seekTo(newPosition)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Replay10,
+                                contentDescription = "快退10秒",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onPlayPause,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "暂停" else "播放",
+                                tint = Color.White,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                exoPlayer?.let { player ->
+                                    val newPosition = (currentPosition + 10000).coerceAtMost(duration)
+                                    player.seekTo(newPosition)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Forward10,
+                                contentDescription = "快进10秒",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                if (showSpeedSelector && !isLocked) {
+                    PlaybackSpeedSelector(
+                        currentIndex = currentSpeedIndex,
+                        onSpeedSelect = onSpeedChange,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formatTime(currentPosition),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 12.sp
+                    )
+
+                    Slider(
+                        value = progress,
+                        onValueChange = { value ->
+                            exoPlayer?.seekTo((value * duration).toLong())
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        )
+                    )
+
+                    Text(
+                        text = formatTime(duration),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 12.sp
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!isLocked) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = onSpeedSelectorToggle,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Text(
+                                    text = playbackSpeeds[currentSpeedIndex].label,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (playbackState == Player.STATE_BUFFERING) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(48.dp)
+                    .align(Alignment.Center),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlaybackSpeedSelector(
+    currentIndex: Int,
+    onSpeedSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        playbackSpeeds.forEachIndexed { index, speed ->
+            Text(
+                text = speed.label,
+                color = if (index == currentIndex) MaterialTheme.colorScheme.primary else Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (index == currentIndex) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { onSpeedSelect(index) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoInfoSection(
+    video: Video,
+    videoDetails: VideoDetails,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(16.dp)
+    ) {
+        Text(
+            text = video.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            InfoChip(
+                icon = Icons.Default.Timer,
+                text = videoDetails.duration
+            )
+            InfoChip(
+                icon = Icons.Default.Person,
+                text = videoDetails.maker.ifEmpty { "未知" }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (videoDetails.tags.isNotEmpty()) {
+            Text(
+                text = "标签: ${videoDetails.tags.joinToString(", ")}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (videoDetails.genres.isNotEmpty()) {
+            Text(
+                text = "类型: ${videoDetails.genres.joinToString(", ")}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(
+    icon: ImageVector,
+    text: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+    }
+}
+
+private fun formatTime(timeMs: Long): String {
+    val totalSeconds = timeMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
+    }
+}
