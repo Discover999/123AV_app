@@ -5,10 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -68,7 +67,6 @@ val playbackSpeeds = listOf(
     PlaybackSpeed(2.0f, "2.0x")
 )
 
-@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
@@ -91,28 +89,47 @@ fun VideoPlayerScreen(
     var isLocked by remember { mutableStateOf(false) }
     var showSpeedSelector by remember { mutableStateOf(false) }
     var currentSpeedIndex by remember { mutableIntStateOf(2) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
 
     val controlsAlpha by animateFloatAsState(
         targetValue = if (showControls && !isLocked) 1f else 0f,
-        animationSpec = tween(300),
+        animationSpec = tween(250, easing = FastOutSlowInEasing),
         label = "controlsAlpha"
     )
 
     val hideControlsJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    fun updateInteractionTime() {
+        lastInteractionTime = System.currentTimeMillis()
+    }
 
     fun scheduleHideControls() {
         hideControlsJob.value?.cancel()
-        if (exoPlayer?.isPlaying == true) {
+        if (exoPlayer?.isPlaying == true && !isLocked && !showSpeedSelector) {
             hideControlsJob.value = coroutineScope.launch {
-                delay(3000)
-                showControls = false
+                val hideDelay = when {
+                    playbackState == Player.STATE_BUFFERING -> 8000L
+                    else -> 5000L
+                }
+                delay(hideDelay)
+                if (System.currentTimeMillis() - lastInteractionTime >= hideDelay - 500) {
+                    showControls = false
+                }
             }
         }
     }
 
     fun showControlsTemporarily() {
+        updateInteractionTime()
         showControls = true
         scheduleHideControls()
+    }
+
+    fun hideControls() {
+        hideControlsJob.value?.cancel()
+        showControls = false
     }
 
     fun createMediaSource(url: String): MediaSource {
@@ -122,6 +139,57 @@ fun VideoPlayerScreen(
         } else {
             ProgressiveMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(url))
         }
+    }
+
+    fun setupPlayerListener(player: Player) {
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                playbackState = state
+                when (state) {
+                    Player.STATE_READY -> scheduleHideControls()
+                    Player.STATE_ENDED -> {
+                        showControls = true
+                        hideControlsJob.value?.cancel()
+                        isPlaying = false
+                        // 播放完成后的处理
+                        if (isFullscreen) {
+                            isFullscreen = false
+                        }
+                    }
+                    Player.STATE_BUFFERING -> {
+                        // 缓冲时显示控件
+                        showControls = true
+                    }
+                }
+            }
+
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                if (playing) {
+                    scheduleHideControls()
+                } else {
+                    hideControlsJob.value?.cancel()
+                    showControls = true
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val errorMsg = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "直播已结束，请刷新重试"
+                    PlaybackException.ERROR_CODE_TIMEOUT -> "网络连接超时，请检查网络"
+                    PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> "网络错误，请检查网络连接"
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "网络连接失败"
+                    PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE -> "视频格式不支持"
+                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "解码器初始化失败"
+                    PlaybackException.ERROR_CODE_DECODING_FAILED -> "视频解码失败"
+                    else -> "播放错误: ${error.message ?: "未知错误"}"
+                }
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                // 播放错误时显示控件以便用户操作
+                showControls = true
+                hideControlsJob.value?.cancel()
+            }
+        })
     }
 
     LaunchedEffect(video) {
@@ -244,67 +312,15 @@ fun VideoPlayerScreen(
                                     prepare()
                                     playWhenReady = true
 
-                                    addListener(object : Player.Listener {
-                                        override fun onPlaybackStateChanged(state: Int) {
-                                            when (state) {
-                                                Player.STATE_READY -> scheduleHideControls()
-                                                Player.STATE_ENDED -> {
-                                                    showControls = true
-                                                    hideControlsJob.value?.cancel()
-                                                }
-                                            }
-                                        }
-
-                                        override fun onIsPlayingChanged(playing: Boolean) {
-                                            if (playing) scheduleHideControls()
-                                        }
-
-                                        override fun onPlayerError(error: PlaybackException) {
-                                            Toast.makeText(ctx, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    })
+                                    setupPlayerListener(this)
                                 }
                                 exoPlayer = player
                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                useController = false
+                                useController = true
                             }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-
-                    Box(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        PlayerControls(
-                            exoPlayer = exoPlayer,
-                            isFullscreen = true,
-                            isLocked = isLocked,
-                            showSpeedSelector = showSpeedSelector,
-                            currentSpeedIndex = currentSpeedIndex,
-                            controlsAlpha = controlsAlpha,
-                            showControls = showControls,
-                            onBack = { isFullscreen = false },
-                            onFullscreen = { isFullscreen = false },
-                            onLock = { isLocked = !isLocked },
-                            onSpeedChange = { index ->
-                                currentSpeedIndex = index
-                                exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
-                                showSpeedSelector = false
-                            },
-                            onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
-                            onPlayPause = {
-                                exoPlayer?.let { player ->
-                                    if (player.isPlaying) player.pause() else player.play()
-                                }
-                            },
-                            onTap = {
-                                if (!isLocked) {
-                                    showControlsTemporarily()
-                                }
-                            },
-                            onShowControls = { showControlsTemporarily() }
-                        )
-                    }
                 }
             } else {
                 Column(
@@ -324,67 +340,15 @@ fun VideoPlayerScreen(
                                         prepare()
                                         playWhenReady = true
 
-                                        addListener(object : Player.Listener {
-                                            override fun onPlaybackStateChanged(state: Int) {
-                                                when (state) {
-                                                    Player.STATE_READY -> scheduleHideControls()
-                                                    Player.STATE_ENDED -> {
-                                                        showControls = true
-                                                        hideControlsJob.value?.cancel()
-                                                    }
-                                                }
-                                            }
-
-                                            override fun onIsPlayingChanged(playing: Boolean) {
-                                                if (playing) scheduleHideControls()
-                                            }
-
-                                            override fun onPlayerError(error: PlaybackException) {
-                                                Toast.makeText(ctx, "播放错误: ${error.message}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        })
+                                        setupPlayerListener(this)
                                     }
                                     exoPlayer = player
                                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                    useController = false
+                                    useController = true
                                 }
                             },
                             modifier = Modifier.fillMaxSize()
                         )
-
-                        Box(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            PlayerControls(
-                                exoPlayer = exoPlayer,
-                                isFullscreen = false,
-                                isLocked = isLocked,
-                                showSpeedSelector = showSpeedSelector,
-                                currentSpeedIndex = currentSpeedIndex,
-                                controlsAlpha = controlsAlpha,
-                                showControls = showControls,
-                                onBack = onBack,
-                                onFullscreen = { isFullscreen = true },
-                                onLock = { isLocked = !isLocked },
-                                onSpeedChange = { index ->
-                                    currentSpeedIndex = index
-                                    exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
-                                    showSpeedSelector = false
-                                },
-                                onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
-                                onPlayPause = {
-                                    exoPlayer?.let { player ->
-                                        if (player.isPlaying) player.pause() else player.play()
-                                    }
-                                },
-                                onTap = {
-                                    if (!isLocked) {
-                                        showControlsTemporarily()
-                                    }
-                                },
-                                onShowControls = { showControlsTemporarily() }
-                            )
-                        }
                     }
 
                     if (videoDetails != null) {
@@ -412,27 +376,51 @@ private fun LoadingState(title: String) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(56.dp),
-                strokeWidth = 4.dp,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier.size(120.dp),
+                shape = CircleShape,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(56.dp),
+                        strokeWidth = 4.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = "正在加载视频...",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 32.dp),
-                textAlign = TextAlign.Center
-            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .padding(horizontal = 32.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(16.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -451,39 +439,94 @@ private fun VideoErrorState(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 32.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Error,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            // 错误图标卡片
+            Card(
+                modifier = Modifier.size(120.dp),
+                shape = CircleShape,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        modifier = Modifier.size(56.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // 错误标题
             Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                text = "播放失败",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // 错误信息卡片
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // 操作按钮
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 OutlinedButton(
                     onClick = onBack,
+                    modifier = Modifier.height(48.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     )
                 ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Default.ArrowBack,
+                        contentDescription = "返回",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("返回")
                 }
                 Button(
                     onClick = onRetry,
+                    modifier = Modifier.height(48.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "重新加载",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("重新加载")
                 }
             }
@@ -500,268 +543,780 @@ private fun PlayerControls(
     currentSpeedIndex: Int,
     controlsAlpha: Float,
     showControls: Boolean,
+    lastInteractionTime: Long,
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onSpeedChange: (Int) -> Unit,
     onSpeedSelectorToggle: () -> Unit,
     onPlayPause: () -> Unit,
-    onTap: () -> Unit,
-    onShowControls: () -> Unit
+    onShowControls: () -> Unit,
+    onHideControls: () -> Unit,
+    onUpdateInteractionTime: () -> Unit,
+    onHideControlsNow: () -> Unit,
+    onShowControlsTemporarily: () -> Unit
 ) {
-    var isPlaying by remember { mutableStateOf(false) }
-    var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
-
-    LaunchedEffect(exoPlayer) {
-        exoPlayer?.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                playbackState = state
-            }
-
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-        })
-    }
-
+    val context = LocalContext.current
     val currentPosition = exoPlayer?.currentPosition ?: 0L
-    val duration = exoPlayer?.duration ?: 0L
-    val bufferedPosition = exoPlayer?.bufferedPosition ?: 0L
+    val duration = exoPlayer?.duration?.takeIf { it > 0 } ?: 0L
     val progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
-    val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
+    val isPlaying = exoPlayer?.isPlaying ?: false
+    val playbackState = exoPlayer?.playbackState ?: Player.STATE_IDLE
+
+    val isBuffering = playbackState == Player.STATE_BUFFERING
+    val isEnded = playbackState == Player.STATE_ENDED
+    val isIdle = playbackState == Player.STATE_IDLE
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    enabled = !isLocked,
-                    onClick = {
-                        if (!showControls) {
-                            onShowControls()
-                        } else {
-                            onTap()
-                        }
-                    }
-                )
-                .alpha(controlsAlpha)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.6f),
-                            Color.Transparent,
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.8f)
-                        )
-                    )
-                )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp, start = 12.dp, end = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = {
-                        if (isFullscreen) {
-                            onFullscreen()
-                        } else {
-                            onBack()
-                        }
-                    },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
-                    )
-                }
-
+        when {
+            isBuffering -> CenterLoadingIndicator()
+            isEnded -> PlaybackCompleteOverlay(
+                isFullscreen = isFullscreen,
+                exoPlayer = exoPlayer,
+                onFullscreen = onFullscreen
+            )
+            isIdle -> CenterLoadingIndicator()
+            else -> {
                 if (!isLocked) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(
-                            onClick = onLock,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "锁定",
-                                tint = Color.White
-                            )
-                        }
-                        IconButton(
-                            onClick = onFullscreen,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                contentDescription = "全屏",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (!isLocked) {
-                        IconButton(
-                            onClick = {
-                                exoPlayer?.let { player ->
-                                    val newPosition = (currentPosition - 10000).coerceAtLeast(0)
-                                    player.seekTo(newPosition)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Replay10,
-                                contentDescription = "快退10秒",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onPlayPause,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .background(MaterialTheme.colorScheme.primary, CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "暂停" else "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                exoPlayer?.let { player ->
-                                    val newPosition = (currentPosition + 10000).coerceAtMost(duration)
-                                    player.seekTo(newPosition)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Forward10,
-                                contentDescription = "快进10秒",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                if (showSpeedSelector && !isLocked) {
-                    PlaybackSpeedSelector(
-                        currentIndex = currentSpeedIndex,
-                        onSpeedSelect = onSpeedChange,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatTime(currentPosition),
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 12.sp
-                    )
-
-                    Slider(
-                        value = progress,
-                        onValueChange = { value ->
-                            exoPlayer?.seekTo((value * duration).toLong())
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp),
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                        )
-                    )
-
-                    Text(
-                        text = formatTime(duration),
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 12.sp
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (!isLocked) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = onSpeedSelectorToggle,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Text(
-                                    text = playbackSpeeds[currentSpeedIndex].label,
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold
-                                )
+                    VideoPlayerOverlay(
+                        showControls = showControls,
+                        showSpeedSelector = showSpeedSelector,
+                        currentSpeedIndex = currentSpeedIndex,
+                        currentPosition = currentPosition,
+                        duration = duration,
+                        progress = progress,
+                        isPlaying = isPlaying,
+                        controlsAlpha = controlsAlpha,
+                        isFullscreen = isFullscreen,
+                        onBack = onBack,
+                        onFullscreen = onFullscreen,
+                        onLock = onLock,
+                        onSpeedChange = onSpeedChange,
+                        onSpeedSelectorToggle = onSpeedSelectorToggle,
+                        onPlayPause = onPlayPause,
+                        onSeek = { seekPos ->
+                            if (duration > 0) {
+                                exoPlayer?.seekTo((seekPos * duration).toLong())
                             }
-                        }
-                    }
+                        },
+                        onSeekBackward = {
+                            exoPlayer?.seekTo((currentPosition - 10000).coerceAtLeast(0))
+                            Toast.makeText(context, "快退 10 秒", Toast.LENGTH_SHORT).show()
+                        },
+                        onSeekForward = {
+                            exoPlayer?.seekTo((currentPosition + 10000).coerceAtMost(duration))
+                            Toast.makeText(context, "快进 10 秒", Toast.LENGTH_SHORT).show()
+                        },
+                        onTap = onShowControlsTemporarily,
+                        onHideControls = onHideControlsNow,
+                        onUpdateInteractionTime = onUpdateInteractionTime
+                    )
+                } else {
+                    LockedOverlay(onUnlock = onLock)
                 }
             }
         }
+    }
+}
 
-        if (playbackState == Player.STATE_BUFFERING) {
-            CircularProgressIndicator(
+@Composable
+private fun VideoPlayerOverlay(
+    showControls: Boolean,
+    showSpeedSelector: Boolean,
+    currentSpeedIndex: Int,
+    currentPosition: Long,
+    duration: Long,
+    progress: Float,
+    isPlaying: Boolean,
+    controlsAlpha: Float,
+    isFullscreen: Boolean,
+    onBack: () -> Unit,
+    onFullscreen: () -> Unit,
+    onLock: () -> Unit,
+    onSpeedChange: (Int) -> Unit,
+    onSpeedSelectorToggle: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onSeekBackward: () -> Unit,
+    onSeekForward: () -> Unit,
+    onTap: () -> Unit,
+    onHideControls: () -> Unit,
+    onUpdateInteractionTime: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        TapGestureLayer(
+            showControls = showControls,
+            onTap = onTap,
+            onDoubleTapLeft = {
+                onUpdateInteractionTime()
+                onSeekBackward()
+            },
+            onDoubleTapRight = {
+                onUpdateInteractionTime()
+                onSeekForward()
+            }
+        )
+
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(200))
+        ) {
+            Column(
                 modifier = Modifier
-                    .size(48.dp)
-                    .align(Alignment.Center),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 3.dp
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.5f),
+                                Color.Transparent,
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.7f)
+                            )
+                        )
+                    )
+            ) {
+                TopBar(
+                    isFullscreen = isFullscreen,
+                    onBack = onBack,
+                    onFullscreen = onFullscreen,
+                    onLock = onLock
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                CenterControls(
+                    isPlaying = isPlaying,
+                    onPlayPause = onPlayPause,
+                    onSeekBackward = onSeekBackward,
+                    onSeekForward = onSeekForward
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                BottomBar(
+                    currentPosition = currentPosition,
+                    duration = duration,
+                    progress = progress,
+                    showSpeedSelector = showSpeedSelector,
+                    currentSpeedIndex = currentSpeedIndex,
+                    onSeek = onSeek,
+                    onSpeedSelectorToggle = onSpeedSelectorToggle,
+                    onSpeedChange = onSpeedChange
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TapGestureLayer(
+    showControls: Boolean,
+    onTap: () -> Unit,
+    onDoubleTapLeft: () -> Unit,
+    onDoubleTapRight: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = { offset ->
+                        val isRightSide = offset.x > size.width / 2
+                        if (isRightSide) onDoubleTapRight() else onDoubleTapLeft()
+                    }
+                )
+            }
+    )
+}
+
+@Composable
+private fun TopBar(
+    isFullscreen: Boolean,
+    onBack: () -> Unit,
+    onFullscreen: () -> Unit,
+    onLock: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ControlButton(
+            onClick = onBack,
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "返回"
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ControlButton(
+                onClick = onLock,
+                icon = Icons.Default.Lock,
+                contentDescription = "锁定"
             )
+            ControlButton(
+                onClick = onFullscreen,
+                icon = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                contentDescription = if (isFullscreen) "退出全屏" else "全屏"
+            )
+        }
+    }
+}
+
+@Composable
+private fun CenterControls(
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onSeekBackward: () -> Unit,
+    onSeekForward: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ControlButton(
+            onClick = onSeekBackward,
+            icon = Icons.Default.Replay10,
+            contentDescription = "快退 10 秒",
+            size = 48.dp
+        )
+
+        PlayPauseButton(
+            isPlaying = isPlaying,
+            onClick = onPlayPause
+        )
+
+        ControlButton(
+            onClick = onSeekForward,
+            icon = Icons.Default.Forward10,
+            contentDescription = "快进 10 秒",
+            size = 48.dp
+        )
+    }
+}
+
+@Composable
+private fun PlayPauseButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit
+) {
+    val scale by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "playPauseScale"
+    )
+
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .scale(scale)
+            .size(72.dp)
+            .background(
+                color = MaterialTheme.colorScheme.primary,
+                shape = CircleShape
+            )
+    ) {
+        Icon(
+            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+            contentDescription = if (isPlaying) "暂停" else "播放",
+            tint = Color.White,
+            modifier = Modifier.size(40.dp)
+        )
+    }
+}
+
+@Composable
+private fun ControlButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    contentDescription: String,
+    size: androidx.compose.ui.unit.Dp = 44.dp
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(size)
+            .background(
+                color = Color.Black.copy(alpha = 0.4f),
+                shape = CircleShape
+            )
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(size * 0.55f)
+        )
+    }
+}
+
+@Composable
+private fun BottomBar(
+    currentPosition: Long,
+    duration: Long,
+    progress: Float,
+    showSpeedSelector: Boolean,
+    currentSpeedIndex: Int,
+    onSeek: (Float) -> Unit,
+    onSpeedSelectorToggle: () -> Unit,
+    onSpeedChange: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        AnimatedVisibility(
+            visible = showSpeedSelector,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            SpeedSelector(
+                currentIndex = currentSpeedIndex,
+                onSpeedSelect = { index ->
+                    onSpeedChange(index)
+                    onSpeedSelectorToggle()
+                },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        ProgressBar(
+            currentPosition = currentPosition,
+            duration = duration,
+            progress = progress,
+            onSeek = onSeek
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = formatTime(currentPosition),
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.width(56.dp)
+            )
+
+            TextButton(
+                onClick = onSpeedSelectorToggle,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = Color.White
+                )
+            ) {
+                Text(
+                    text = playbackSpeeds[currentSpeedIndex].label,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Icon(
+                    imageVector = if (showSpeedSelector) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = "播放速度",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Text(
+                text = formatTime(duration),
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.width(56.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProgressBar(
+    currentPosition: Long,
+    duration: Long,
+    progress: Float,
+    onSeek: (Float) -> Unit
+) {
+    Slider(
+        value = progress,
+        onValueChange = onSeek,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp),
+        colors = SliderDefaults.colors(
+            thumbColor = MaterialTheme.colorScheme.primary,
+            activeTrackColor = MaterialTheme.colorScheme.primary,
+            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+        )
+    )
+}
+
+@Composable
+private fun SpeedSelector(
+    currentIndex: Int,
+    onSpeedSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Black.copy(alpha = 0.6f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            playbackSpeeds.forEachIndexed { index, speed ->
+                FilterChip(
+                    selected = currentIndex == index,
+                    onClick = { onSpeedSelect(index) },
+                    label = {
+                        Text(
+                            text = speed.label,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LockedOverlay(onUnlock: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onUnlock() })
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Lock,
+            contentDescription = "已锁定",
+            tint = Color.White.copy(alpha = 0.6f),
+            modifier = Modifier.size(48.dp)
+        )
+    }
+}
+
+@Composable
+private fun CenterLoadingIndicator() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator(
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun BottomControlBar(
+    showSpeedSelector: Boolean,
+    currentSpeedIndex: Int,
+    currentPosition: Long,
+    duration: Long,
+    progress: Float,
+    onSpeedSelectorToggle: () -> Unit,
+    onSpeedChange: (Int) -> Unit,
+    onSeek: (Float) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        if (showSpeedSelector) {
+            PlaybackSpeedSelector(
+                currentIndex = currentSpeedIndex,
+                onSpeedSelect = onSpeedChange,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        ProgressSlider(
+            currentPosition = currentPosition,
+            duration = duration,
+            progress = progress,
+            onSeek = onSeek
+        )
+
+        SpeedControlRow(
+            currentSpeedIndex = currentSpeedIndex,
+            onSpeedSelectorToggle = onSpeedSelectorToggle
+        )
+    }
+}
+
+@Composable
+private fun ProgressSlider(
+    currentPosition: Long,
+    duration: Long,
+    progress: Float,
+    onSeek: (Float) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = formatTime(currentPosition),
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 12.sp
+        )
+
+        Slider(
+            value = progress,
+            onValueChange = onSeek,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 8.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+            )
+        )
+
+        Text(
+            text = formatTime(duration),
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
+private fun SpeedControlRow(
+    currentSpeedIndex: Int,
+    onSpeedSelectorToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onSpeedSelectorToggle,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Text(
+                    text = playbackSpeeds[currentSpeedIndex].label,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LockedStateOverlay(onUnlock: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onUnlock() })
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Lock,
+            contentDescription = "已锁定",
+            tint = Color.White.copy(alpha = 0.7f),
+            modifier = Modifier.size(48.dp)
+        )
+    }
+}
+
+@Composable
+private fun BufferingIndicator() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.3f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.size(100.dp),
+            shape = CircleShape,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+            )
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
+                    Text(
+                        text = "缓冲中...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackCompleteOverlay(
+    isFullscreen: Boolean,
+    exoPlayer: Player?,
+    onFullscreen: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(0.8f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.Black.copy(alpha = 0.7f)
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+                Text(
+                    text = "播放完成",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "视频已播放完毕，您可以重新观看或返回",
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalButton(
+                onClick = {
+                    exoPlayer?.seekTo(0)
+                    exoPlayer?.play()
+                },
+                modifier = Modifier.height(48.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Replay,
+                    contentDescription = "重新播放",
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("重新播放")
+            }
+
+            if (isFullscreen) {
+                OutlinedButton(
+                    onClick = onFullscreen,
+                    modifier = Modifier.height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color.White
+                    ),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FullscreenExit,
+                        contentDescription = "退出全屏",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("退出全屏")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleIndicator() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.3f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.size(100.dp),
+            shape = CircleShape,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+            )
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "准备播放...",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
     }
 }

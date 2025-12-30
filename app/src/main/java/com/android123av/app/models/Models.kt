@@ -24,17 +24,6 @@ data class Messages(
     val keyed: List<String>
 )
 
-// 请求信息数据类
-data class RequestInfo(
-    val url: String = "",
-    val status: String = "未请求",
-    val startTime: Long = 0,
-    val endTime: Long = 0,
-    val duration: Long = 0,
-    val responseSize: Int = 0,
-    val success: Boolean? = null
-)
-
 // 用户数据类
 data class User(
     val id: String,
