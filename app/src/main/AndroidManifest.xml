@@ -31,7 +31,8 @@
             android:name=".VideoPlayerActivity"
             android:exported="false"
             android:label="视频播放"
-            android:theme="@style/Theme.MyApplication" />
+            android:theme="@style/Theme.MyApplication"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize" />
         <activity
             android:name=".LoginActivity"
             android:exported="false"

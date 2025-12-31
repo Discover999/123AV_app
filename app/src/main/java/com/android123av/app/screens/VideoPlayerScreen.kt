@@ -56,6 +56,7 @@ import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchVideoUrlParallel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.content.pm.ActivityInfo
 
 data class PlaybackSpeed(
     val speed: Float,
@@ -103,31 +104,20 @@ fun VideoPlayerScreen(
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var videoWidth by remember { mutableIntStateOf(0) }
     var videoHeight by remember { mutableIntStateOf(0) }
-    var isPortraitVideo by remember { mutableStateOf(false) }
     
-    fun setSystemUIVisibility(isFullscreen: Boolean, showControls: Boolean) {
+    fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
             if (isFullscreen) {
-                if (showControls && !isLocked) {
-                    win.decorView.systemUiVisibility = (
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    )
-                    win.insetsController?.show(WindowInsets.Type.statusBars())
-                    win.insetsController?.show(WindowInsets.Type.navigationBars())
-                } else {
-                    win.decorView.systemUiVisibility = (
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    )
-                    win.insetsController?.hide(WindowInsets.Type.statusBars())
-                    win.insetsController?.hide(WindowInsets.Type.navigationBars())
-                }
+                win.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                )
+                win.insetsController?.hide(WindowInsets.Type.statusBars())
+                win.insetsController?.hide(WindowInsets.Type.navigationBars())
             } else {
                 win.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 win.insetsController?.show(WindowInsets.Type.statusBars())
@@ -220,7 +210,6 @@ fun VideoPlayerScreen(
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 videoWidth = videoSize.width
                 videoHeight = videoSize.height
-                isPortraitVideo = videoHeight > videoWidth
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -288,15 +277,24 @@ fun VideoPlayerScreen(
         isFullscreen = false
     }
     
-    LaunchedEffect(isFullscreen, showControls, isLocked) {
-        setSystemUIVisibility(isFullscreen, showControls)
+    LaunchedEffect(isFullscreen) {
+        activity?.requestedOrientation = if (isFullscreen) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+    
+    LaunchedEffect(isFullscreen) {
+        setSystemUIVisibility(isFullscreen)
     }
 
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer?.release()
             hideControlsJob.value?.cancel()
-            setSystemUIVisibility(false, true)
+            setSystemUIVisibility(false)
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
@@ -361,7 +359,7 @@ fun VideoPlayerScreen(
                     label = "fullscreenTransition"
                 ) { fullscreen ->
                     if (fullscreen) {
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                             AndroidView(
                                 factory = { ctx ->
                                     PlayerView(ctx).apply {
@@ -377,27 +375,12 @@ fun VideoPlayerScreen(
                                         useController = false
                                     }
                                 },
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .then(
-                                        if (isPortraitVideo) {
-                                            Modifier.graphicsLayer {
-                                                rotationZ = 90f
-                                                transformOrigin = TransformOrigin.Center
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    ),
+                                modifier = Modifier.fillMaxSize(),
                                 update = { playerView ->
                                     if (playerView.player != exoPlayer) {
                                         playerView.player = exoPlayer
                                     }
-                                    playerView.resizeMode = if (isPortraitVideo) {
-                                        AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                    } else {
-                                        AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                    }
+                                    playerView.resizeMode = resizeMode
                                 }
                             )
 
@@ -442,7 +425,7 @@ fun VideoPlayerScreen(
                         }
                     } else {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f/9f)) {
                                 AndroidView(
                                     factory = { ctx ->
                                         PlayerView(ctx).apply {
