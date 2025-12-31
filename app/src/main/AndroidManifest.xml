@@ -45,6 +45,12 @@
             android:label="网络连接测试"
             android:theme="@style/Theme.MyApplication"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="设置"
+            android:theme="@style/Theme.MyApplication"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

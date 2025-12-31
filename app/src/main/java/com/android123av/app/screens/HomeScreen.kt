@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.android123av.app.components.*
 import com.android123av.app.models.Video
+import com.android123av.app.models.ViewMode
 import com.android123av.app.network.fetchVideosDataWithResponse
 import com.android123av.app.network.parseVideosFromHtml
 
@@ -406,10 +407,6 @@ private fun CategoryChangeLoading() {
             strokeWidth = 4.dp
         )
     }
-}
-
-enum class ViewMode {
-    LIST, GRID
 }
 
 private enum class ContentState {

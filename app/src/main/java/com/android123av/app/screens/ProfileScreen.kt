@@ -151,7 +151,8 @@ fun ProfileScreen(
     user: User?,
     onLogout: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToNetworkTest: () -> Unit = {}
+    onNavigateToNetworkTest: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {}
 ) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
@@ -236,7 +237,7 @@ fun ProfileScreen(
                     icon = Icons.Default.Settings,
                     title = "设置",
                     subtitle = "应用设置",
-                    onClick = { }
+                    onClick = { onNavigateToSettings() }
                 )
 
                 MenuItem(

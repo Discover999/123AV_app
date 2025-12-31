@@ -101,5 +101,10 @@ data class PaginationInfo(
     val hasPrevPage: Boolean
 )
 
+// 视图模式枚举
+enum class ViewMode {
+    LIST, GRID
+}
+
 
 

@@ -20,6 +20,7 @@ import com.android123av.app.state.rememberAppState
 import com.android123av.app.state.rememberUserState
 import com.android123av.app.state.UserStateManager
 import com.android123av.app.network.initializeNetworkService
+import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
 import java.io.File
 
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
         initializeNetworkService(this)
         
         UserStateManager.initialize(this)
+        ThemeStateManager.initialize(this)
         
         enableEdgeToEdge()
         setContent {
@@ -115,6 +117,10 @@ fun MyApplicationApp() {
                 },
                 onNavigateToNetworkTest = {
                     val intent = Intent(context, NetworkTestActivity::class.java)
+                    context.startActivity(intent)
+                },
+                onNavigateToSettings = {
+                    val intent = Intent(context, SettingsActivity::class.java)
                     context.startActivity(intent)
                 }
             )
