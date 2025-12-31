@@ -57,6 +57,7 @@ import com.android123av.app.network.fetchVideoUrlParallel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.content.pm.ActivityInfo
+import kotlinx.coroutines.async
 
 data class PlaybackSpeed(
     val speed: Float,
@@ -234,42 +235,38 @@ fun VideoPlayerScreen(
     LaunchedEffect(video) {
         isLoading = true
         errorMessage = null
-        try {
-            if (!video.videoUrl.isNullOrBlank()) {
-                videoUrl = video.videoUrl
-            } else {
-                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                if (videoUrl == null) {
-                    val httpUrl = fetchVideoUrl(video.id)
-                    if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                        videoUrl = httpUrl
+        
+        coroutineScope.launch {
+            try {
+                val videoUrlDeferred = async {
+                    if (!video.videoUrl.isNullOrBlank()) {
+                        video.videoUrl
                     } else {
-                        videoUrl = fetchM3u8UrlWithWebView(context, video.id)
+                        fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
+                            ?: fetchVideoUrl(video.id)?.takeIf { it.contains(".m3u8") }
+                            ?: fetchM3u8UrlWithWebView(context, video.id)
                     }
                 }
-            }
-            if (videoUrl == null) {
-                errorMessage = "无法获取视频播放地址"
-            }
-        } catch (e: Exception) {
-            errorMessage = "获取视频失败: ${e.message}"
-        } finally {
-            isLoading = false
-        }
-    }
-
-    LaunchedEffect(video) {
-        if (video.details == null) {
-            isLoadingDetails = true
-            try {
-                videoDetails = fetchVideoDetails(video.id)
+                
+                val detailsDeferred = async {
+                    if (video.details != null) {
+                        video.details
+                    } else {
+                        fetchVideoDetails(video.id)
+                    }
+                }
+                
+                videoUrl = videoUrlDeferred.await()
+                videoDetails = detailsDeferred.await()
+                
+                if (videoUrl == null) {
+                    errorMessage = "无法获取视频播放地址"
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                errorMessage = "获取视频失败: ${e.message}"
             } finally {
-                isLoadingDetails = false
+                isLoading = false
             }
-        } else {
-            videoDetails = video.details
         }
     }
 
@@ -1250,89 +1247,31 @@ private fun PlaybackCompleteOverlay(
     exoPlayer: Player?,
     onFullscreen: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
-            .fillMaxWidth(0.8f),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.Black.copy(alpha = 0.7f)
-            ),
-            shape = RoundedCornerShape(16.dp)
+        Button(
+            onClick = {
+                exoPlayer?.seekTo(0)
+                exoPlayer?.play()
+            },
+            modifier = Modifier
+                .width(160.dp)
+                .height(48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            )
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp)
-                )
-                Text(
-                    text = "播放完成",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "视频已播放完毕，您可以重新观看或返回",
-                    color = Color.White.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilledTonalButton(
-                onClick = {
-                    exoPlayer?.seekTo(0)
-                    exoPlayer?.play()
-                },
-                modifier = Modifier.height(48.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Replay,
-                    contentDescription = "重新播放",
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("重新播放")
-            }
-
-            if (isFullscreen) {
-                OutlinedButton(
-                    onClick = onFullscreen,
-                    modifier = Modifier.height(48.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color.White
-                    ),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FullscreenExit,
-                        contentDescription = "退出全屏",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("退出全屏")
-                }
-            }
+            Icon(
+                imageVector = Icons.Default.Replay,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("重新播放")
         }
     }
 }
@@ -1382,6 +1321,8 @@ private fun VideoInfoSection(
     videoDetails: VideoDetails,
     modifier: Modifier = Modifier
 ) {
+    var isTitleExpanded by remember { mutableStateOf(false) }
+    
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1392,12 +1333,36 @@ private fun VideoInfoSection(
             text = video.title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            maxLines = 2,
+            maxLines = if (isTitleExpanded) Int.MAX_VALUE else 2,
             overflow = TextOverflow.Ellipsis
         )
-
+        
+        if (video.title.length > 50) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = { isTitleExpanded = !isTitleExpanded },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text(
+                        text = if (isTitleExpanded) "收起" else "更多",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        imageVector = if (isTitleExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+        
         Spacer(modifier = Modifier.height(12.dp))
-
+        
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -1410,10 +1375,14 @@ private fun VideoInfoSection(
                 icon = Icons.Default.Person,
                 text = videoDetails.maker.ifEmpty { "未知" }
             )
+            InfoChip(
+                icon = Icons.Default.Favorite,
+                text = formatCount(videoDetails.favouriteCount)
+            )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
+        Spacer(modifier = Modifier.height(8.dp))
+        
         if (videoDetails.tags.isNotEmpty()) {
             Text(
                 text = "标签: ${videoDetails.tags.joinToString(", ")}",
@@ -1424,7 +1393,7 @@ private fun VideoInfoSection(
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
-
+        
         if (videoDetails.genres.isNotEmpty()) {
             Text(
                 text = "类型: ${videoDetails.genres.joinToString(", ")}",
@@ -1434,6 +1403,39 @@ private fun VideoInfoSection(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            FilledTonalButton(
+                onClick = { },
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FavoriteBorder,
+                    contentDescription = "收藏",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "收藏",
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+    }
+}
+
+private fun formatCount(count: Int): String {
+    return when {
+        count >= 1000000 -> String.format("%.1fM", count / 1000000.0)
+        count >= 1000 -> String.format("%.1fK", count / 1000.0)
+        else -> count.toString()
     }
 }
 

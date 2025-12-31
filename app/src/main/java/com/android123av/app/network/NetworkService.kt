@@ -34,8 +34,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
 // 视频URL缓存 - 使用LRU策略，内存中缓存最近访问的50个视频URL
-private val videoUrlCache = object : LinkedHashMap<String, String?>(50, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String?>?): Boolean {
+private val videoUrlCache = object : LinkedHashMap<String, CachedVideoUrl>(50, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedVideoUrl>?): Boolean {
         return size > 50
     }
 }
@@ -43,12 +43,33 @@ private val videoUrlCache = object : LinkedHashMap<String, String?>(50, 0.75f, t
 // 缓存锁
 private val cacheLock = Any()
 
+// 缓存过期时间：30分钟
+private const val CACHE_EXPIRATION_MS = 30 * 60 * 1000L
+
 /**
- * 获取缓存的视频URL
+ * 缓存的视频URL数据类
+ */
+data class CachedVideoUrl(
+    val url: String?,
+    val timestamp: Long = System.currentTimeMillis()
+) {
+    fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > CACHE_EXPIRATION_MS
+}
+
+/**
+ * 获取缓存的视频URL（带过期检查）
  */
 fun getCachedVideoUrl(videoId: String): String? {
     synchronized(cacheLock) {
-        return videoUrlCache[videoId]
+        val cached = videoUrlCache[videoId]
+        return when {
+            cached == null -> null
+            cached.isExpired() -> {
+                videoUrlCache.remove(videoId)
+                null
+            }
+            else -> cached.url
+        }
     }
 }
 
@@ -57,7 +78,7 @@ fun getCachedVideoUrl(videoId: String): String? {
  */
 fun cacheVideoUrl(videoId: String, url: String?) {
     synchronized(cacheLock) {
-        videoUrlCache[videoId] = url
+        videoUrlCache[videoId] = CachedVideoUrl(url)
     }
 }
 
@@ -71,6 +92,22 @@ fun clearVideoUrlCache() {
 }
 
 /**
+ * 预热指定视频ID的缓存（异步）
+ */
+fun warmupCache(context: android.content.Context, videoId: String) {
+    if (videoId.isBlank() || videoId.startsWith("fav_")) return
+    
+    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val url = fetchVideoUrlSync(videoId)
+            cacheVideoUrl(videoId, url)
+        } catch (e: Exception) {
+            // 静默忽略预热错误
+        }
+    }
+}
+
+/**
  * 并行获取视频URL - 同时尝试HTTP和WebView方式，取最快返回的结果
  * @param context Android上下文
  * @param videoId 视频ID
@@ -78,6 +115,10 @@ fun clearVideoUrlCache() {
  * @return 视频URL或null
  */
 suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: String, timeoutMs: Long = 8000): String? = withContext(Dispatchers.IO) {
+    if (videoId.isBlank()) {
+        return@withContext null
+    }
+
     val cachedUrl = getCachedVideoUrl(videoId)
     if (cachedUrl != null) {
         return@withContext cachedUrl
@@ -85,19 +126,29 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
     
     val isFavorite = videoId.startsWith("fav_")
     
-    val result = try {
+    var finalResult: String? = null
+    
+    try {
         withTimeout(timeoutMs) {
             coroutineScope {
                 val httpDeferred = async {
                     if (isFavorite) {
                         null
                     } else {
-                        fetchVideoUrlSync(videoId)
+                        try {
+                            fetchVideoUrlSync(videoId)
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
                 }
                 
                 val webViewDeferred = async {
-                    fetchM3u8UrlWithWebViewFast(context, videoId)
+                    try {
+                        fetchM3u8UrlWithWebViewFast(context, videoId)
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
                 
                 val result = try {
@@ -115,37 +166,35 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
                     Pair(httpResult ?: webViewResult, "Fallback")
                 }
                 
-                result.first
+                finalResult = result.first
             }
         }
     } catch (e: TimeoutCancellationException) {
-        val httpResult = try { fetchVideoUrlSync(videoId) } catch (e: Exception) { null }
-        if (httpResult != null) {
-            httpResult
-        } else {
-            try { 
-                fetchM3u8UrlWithWebViewFast(context, videoId, 3000) 
-            } catch (e: Exception) { 
-                null 
-            }
-        }
+        finalResult = tryFetchWithFallback(context, videoId, isFavorite)
     } catch (e: Exception) {
-        try {
-            if (isFavorite) {
-                fetchM3u8UrlWithWebView(context, videoId)
-            } else {
-                fetchVideoUrlSync(videoId) ?: fetchM3u8UrlWithWebView(context, videoId)
-            }
-        } catch (e2: Exception) {
-            null
-        }
+        finalResult = tryFetchWithFallback(context, videoId, isFavorite)
     }
     
-    result?.let { url ->
+    finalResult?.let { url ->
         cacheVideoUrl(videoId, url)
     }
     
-    result
+    finalResult
+}
+
+/**
+ * 备用获取方法
+ */
+private suspend fun tryFetchWithFallback(context: android.content.Context, videoId: String, isFavorite: Boolean): String? {
+    return try {
+        if (isFavorite) {
+            fetchM3u8UrlWithWebView(context, videoId)
+        } else {
+            fetchVideoUrlSync(videoId) ?: fetchM3u8UrlWithWebView(context, videoId)
+        }
+    } catch (e: Exception) {
+        null
+    }
 }
 
 /**

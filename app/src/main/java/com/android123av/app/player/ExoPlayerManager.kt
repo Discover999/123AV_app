@@ -1,6 +1,7 @@
 package com.android123av.app.player
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
@@ -14,12 +15,16 @@ import com.android123av.app.models.PlayerState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+private const val TAG = "ExoPlayerManager"
+
 @OptIn(UnstableApi::class)
 class ExoPlayerManager(private val context: Context) {
     
     private var _player: ExoPlayer? = null
     val player: ExoPlayer?
         get() = _player
+    
+    private var playerView: androidx.media3.ui.PlayerView? = null
     
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState
@@ -37,10 +42,17 @@ class ExoPlayerManager(private val context: Context) {
         }
         
         override fun onVideoSizeChanged(videoSize: VideoSize) {
+            Log.d(TAG, "onVideoSizeChanged: width=${videoSize.width}, height=${videoSize.height}, unapplied=${videoSize.unappliedRotationDegrees}")
             _playerState.value = _playerState.value.copy(
                 videoWidth = videoSize.width,
                 videoHeight = videoSize.height
             )
+            playerView?.let { view ->
+                if (view.resizeMode != _playerState.value.resizeMode) {
+                    Log.w(TAG, "Detected unexpected resizeMode change, restoring to: ${_playerState.value.resizeMode}")
+                    view.resizeMode = _playerState.value.resizeMode
+                }
+            }
         }
         
         override fun onPlayerError(error: PlaybackException) {
@@ -99,7 +111,19 @@ class ExoPlayerManager(private val context: Context) {
     }
     
     fun setResizeMode(mode: Int) {
+        Log.d(TAG, "setResizeMode called: $mode")
         _playerState.value = _playerState.value.copy(resizeMode = mode)
+        playerView?.let { view ->
+            view.resizeMode = mode
+            Log.d(TAG, "Applied resizeMode $mode to PlayerView")
+        }
+    }
+    
+    fun setPlayerView(view: androidx.media3.ui.PlayerView) {
+        Log.d(TAG, "setPlayerView called, current resizeMode: ${_playerState.value.resizeMode}")
+        playerView = view
+        view.resizeMode = _playerState.value.resizeMode
+        Log.d(TAG, "Applied resizeMode ${view.resizeMode} to new PlayerView")
     }
     
     private fun createMediaSource(url: String): MediaSource {

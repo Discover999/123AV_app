@@ -159,6 +159,7 @@ private fun FullscreenPlayerView(
                     player = viewModel.getExoPlayer()
                     resizeMode = uiState.resizeMode
                     useController = false
+                    viewModel.setPlayerView(this)
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -194,6 +195,7 @@ private fun PortraitPlayerView(
                         player = viewModel.getExoPlayer()
                         resizeMode = uiState.resizeMode
                         useController = false
+                        viewModel.setPlayerView(this)
                     }
                 },
                 modifier = Modifier.fillMaxSize(),

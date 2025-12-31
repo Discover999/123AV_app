@@ -1,6 +1,7 @@
 package com.android123av.app.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.android123av.app.models.PlayerState
@@ -14,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+private const val TAG = "VideoPlayerViewModel"
 
 class VideoPlayerViewModel(
     application: Application,
@@ -141,6 +144,8 @@ class VideoPlayerViewModel(
         val nextIndex = (currentIndex + 1) % modes.size
         val nextMode = modes[nextIndex]
         
+        Log.d(TAG, "cycleResizeMode: current=$currentMode, next=$nextMode")
+        
         playerManager.setResizeMode(nextMode)
         _uiState.value = _uiState.value.copy(resizeMode = nextMode)
         updateInteractionTime()
@@ -204,6 +209,8 @@ class VideoPlayerViewModel(
     }
     
     fun getExoPlayer() = playerManager.player
+    
+    fun setPlayerView(view: androidx.media3.ui.PlayerView) = playerManager.setPlayerView(view)
     
     fun getCurrentPosition() = playerManager.getCurrentPosition()
     

@@ -38,13 +38,17 @@ fun parseVideoDetails(html: String): VideoDetails? {
             div.select("span").firstOrNull()?.text()?.contains("标签") == true
         }?.select("span a")?.map { it.text() } ?: emptyList()
         
+        // 解析收藏数
+        val favouriteCount = doc.select("span[ref=counter]").firstOrNull()?.text()?.toIntOrNull() ?: 0
+        
         VideoDetails(
             code = code,
             releaseDate = releaseDate,
             duration = duration,
             genres = genres,
             maker = maker,
-            tags = tags
+            tags = tags,
+            favouriteCount = favouriteCount
         )
     } catch (e: Exception) {
         e.printStackTrace()
