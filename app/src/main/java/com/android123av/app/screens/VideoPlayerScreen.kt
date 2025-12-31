@@ -1,5 +1,8 @@
 package com.android123av.app.screens
 
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -22,6 +25,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -77,6 +82,9 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
+    
+    val activity = context as? androidx.activity.ComponentActivity
+    val window = activity?.window
 
     var isLoading by remember { mutableStateOf(true) }
     var videoUrl by remember { mutableStateOf<String?>(null) }
@@ -92,6 +100,41 @@ fun VideoPlayerScreen(
     var currentSpeedIndex by remember { mutableIntStateOf(2) }
     var isPlaying by remember { mutableStateOf(false) }
     var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
+    var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var videoWidth by remember { mutableIntStateOf(0) }
+    var videoHeight by remember { mutableIntStateOf(0) }
+    var isPortraitVideo by remember { mutableStateOf(false) }
+    
+    fun setSystemUIVisibility(isFullscreen: Boolean, showControls: Boolean) {
+        window?.let { win ->
+            if (isFullscreen) {
+                if (showControls && !isLocked) {
+                    win.decorView.systemUiVisibility = (
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    )
+                    win.insetsController?.show(WindowInsets.Type.statusBars())
+                    win.insetsController?.show(WindowInsets.Type.navigationBars())
+                } else {
+                    win.decorView.systemUiVisibility = (
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    )
+                    win.insetsController?.hide(WindowInsets.Type.statusBars())
+                    win.insetsController?.hide(WindowInsets.Type.navigationBars())
+                }
+            } else {
+                win.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                win.insetsController?.show(WindowInsets.Type.statusBars())
+                win.insetsController?.show(WindowInsets.Type.navigationBars())
+            }
+        }
+    }
 
     val controlsAlpha by animateFloatAsState(
         targetValue = if (showControls && !isLocked) 1f else 0f,
@@ -174,6 +217,12 @@ fun VideoPlayerScreen(
                 }
             }
 
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoWidth = videoSize.width
+                videoHeight = videoSize.height
+                isPortraitVideo = videoHeight > videoWidth
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 val errorMsg = when (error.errorCode) {
                     PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "直播已结束，请刷新重试"
@@ -238,11 +287,16 @@ fun VideoPlayerScreen(
     BackHandler(isFullscreen) {
         isFullscreen = false
     }
+    
+    LaunchedEffect(isFullscreen, showControls, isLocked) {
+        setSystemUIVisibility(isFullscreen, showControls)
+    }
 
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer?.release()
             hideControlsJob.value?.cancel()
+            setSystemUIVisibility(false, true)
         }
     }
 
@@ -298,69 +352,170 @@ fun VideoPlayerScreen(
             }
         )
         videoUrl != null -> {
-            Column(modifier = modifier.fillMaxWidth()) {
-                val playerModifier = if (isFullscreen) {
-                    Modifier.fillMaxWidth().fillMaxHeight()
-                } else {
-                    Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                }
-
-                Box(modifier = playerModifier) {
-                    AndroidView(
-                        factory = { ctx ->
-                            PlayerView(ctx).apply {
-                                player = ExoPlayer.Builder(ctx).build().apply {
-                                    val source = createMediaSource(videoUrl!!)
-                                    setMediaSource(source)
-                                    prepare()
-                                    playWhenReady = true
-                                    setupPlayerListener(this)
+            Box(modifier = modifier.fillMaxSize()) {
+                AnimatedContent(
+                    targetState = isFullscreen,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    },
+                    label = "fullscreenTransition"
+                ) { fullscreen ->
+                    if (fullscreen) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    PlayerView(ctx).apply {
+                                        player = exoPlayer ?: ExoPlayer.Builder(ctx).build().apply {
+                                            val source = createMediaSource(videoUrl!!)
+                                            setMediaSource(source)
+                                            prepare()
+                                            playWhenReady = true
+                                            setupPlayerListener(this)
+                                            exoPlayer = this
+                                        }
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        useController = false
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .then(
+                                        if (isPortraitVideo) {
+                                            Modifier.graphicsLayer {
+                                                rotationZ = 90f
+                                                transformOrigin = TransformOrigin.Center
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
+                                update = { playerView ->
+                                    if (playerView.player != exoPlayer) {
+                                        playerView.player = exoPlayer
+                                    }
+                                    playerView.resizeMode = if (isPortraitVideo) {
+                                        AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                    } else {
+                                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    }
                                 }
-                                exoPlayer = player
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                useController = false
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                            )
 
-                    PlayerControls(
-                        exoPlayer = exoPlayer,
-                        isFullscreen = isFullscreen,
-                        isLocked = isLocked,
-                        showSpeedSelector = showSpeedSelector,
-                        currentSpeedIndex = currentSpeedIndex,
-                        controlsAlpha = controlsAlpha,
-                        showControls = showControls,
-                        lastInteractionTime = lastInteractionTime,
-                        onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
-                        onFullscreen = { isFullscreen = !isFullscreen },
-                        onLock = { isLocked = !isLocked },
-                        onSpeedChange = { currentSpeedIndex = it },
-                        onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
-                        onPlayPause = {
-                            exoPlayer?.let { player ->
-                                if (player.isPlaying) {
-                                    player.pause()
-                                } else {
-                                    player.play()
-                                }
-                            }
-                        },
-                        onShowControls = { showControls = true },
-                        onHideControls = { showControls = false },
-                        onUpdateInteractionTime = { updateInteractionTime() },
-                        onHideControlsNow = { hideControls() },
-                        onShowControlsTemporarily = { showControlsTemporarily() }
-                    )
-                }
+                            PlayerControls(
+                                exoPlayer = exoPlayer,
+                                isFullscreen = isFullscreen,
+                                isLocked = isLocked,
+                                showSpeedSelector = showSpeedSelector,
+                                currentSpeedIndex = currentSpeedIndex,
+                                controlsAlpha = controlsAlpha,
+                                showControls = showControls,
+                                lastInteractionTime = lastInteractionTime,
+                                onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                onFullscreen = { isFullscreen = !isFullscreen },
+                                onLock = { isLocked = !isLocked },
+                                onSpeedChange = { currentSpeedIndex = it },
+                                onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                onPlayPause = {
+                                    exoPlayer?.let { player ->
+                                        if (player.isPlaying) {
+                                            player.pause()
+                                        } else {
+                                            player.play()
+                                        }
+                                    }
+                                },
+                                onShowControls = { showControls = true },
+                                onHideControls = { showControls = false },
+                                onUpdateInteractionTime = { updateInteractionTime() },
+                                onHideControlsNow = { hideControls() },
+                                onShowControlsTemporarily = { showControlsTemporarily() },
+                                onResizeModeChange = {
+                                    resizeMode = when (resizeMode) {
+                                        AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                        AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    }
+                                },
+                                resizeMode = resizeMode
+                            )
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        PlayerView(ctx).apply {
+                                            player = exoPlayer ?: ExoPlayer.Builder(ctx).build().apply {
+                                                val source = createMediaSource(videoUrl!!)
+                                                setMediaSource(source)
+                                                prepare()
+                                                playWhenReady = true
+                                                setupPlayerListener(this)
+                                                exoPlayer = this
+                                            }
+                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            useController = false
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                    update = { playerView ->
+                                        if (playerView.player != exoPlayer) {
+                                            playerView.player = exoPlayer
+                                        }
+                                        playerView.resizeMode = resizeMode
+                                    }
+                                )
 
-                if (!isFullscreen && videoDetails != null) {
-                    VideoInfoSection(
-                        video = video,
-                        videoDetails = videoDetails!!,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                                PlayerControls(
+                                    exoPlayer = exoPlayer,
+                                    isFullscreen = isFullscreen,
+                                    isLocked = isLocked,
+                                    showSpeedSelector = showSpeedSelector,
+                                    currentSpeedIndex = currentSpeedIndex,
+                                    controlsAlpha = controlsAlpha,
+                                    showControls = showControls,
+                                    lastInteractionTime = lastInteractionTime,
+                                    onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                    onFullscreen = { isFullscreen = !isFullscreen },
+                                    onLock = { isLocked = !isLocked },
+                                    onSpeedChange = { currentSpeedIndex = it },
+                                    onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                    onPlayPause = {
+                                        exoPlayer?.let { player ->
+                                            if (player.isPlaying) {
+                                                player.pause()
+                                            } else {
+                                                player.play()
+                                            }
+                                        }
+                                    },
+                                    onShowControls = { showControls = true },
+                                    onHideControls = { showControls = false },
+                                    onUpdateInteractionTime = { updateInteractionTime() },
+                                    onHideControlsNow = { hideControls() },
+                                    onShowControlsTemporarily = { showControlsTemporarily() },
+                                    onResizeModeChange = {
+                                        resizeMode = when (resizeMode) {
+                                            AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                            AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        }
+                                    },
+                                    resizeMode = resizeMode
+                                )
+                            }
+
+                            if (videoDetails != null) {
+                                VideoInfoSection(
+                                    video = video,
+                                    videoDetails = videoDetails!!,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -537,6 +692,7 @@ private fun VideoErrorState(
     }
 }
 
+@OptIn(UnstableApi::class)
 @Composable
 private fun PlayerControls(
     exoPlayer: Player?,
@@ -557,14 +713,30 @@ private fun PlayerControls(
     onHideControls: () -> Unit,
     onUpdateInteractionTime: () -> Unit,
     onHideControlsNow: () -> Unit,
-    onShowControlsTemporarily: () -> Unit
+    onShowControlsTemporarily: () -> Unit,
+    onResizeModeChange: () -> Unit,
+    resizeMode: Int
 ) {
     val context = LocalContext.current
-    val currentPosition = exoPlayer?.currentPosition ?: 0L
-    val duration = exoPlayer?.duration?.takeIf { it > 0 } ?: 0L
+    
+    var currentPosition by remember { mutableStateOf(exoPlayer?.currentPosition ?: 0L) }
+    var duration by remember { mutableStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
+    var isPlaying by remember { mutableStateOf(exoPlayer?.isPlaying ?: false) }
+    var playbackState by remember { mutableStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
+    
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            kotlinx.coroutines.delay(200)
+            exoPlayer?.let { player ->
+                currentPosition = player.currentPosition
+                duration = player.duration.takeIf { it > 0 } ?: 0L
+                isPlaying = player.isPlaying
+                playbackState = player.playbackState
+            }
+        }
+    }
+
     val progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
-    val isPlaying = exoPlayer?.isPlaying ?: false
-    val playbackState = exoPlayer?.playbackState ?: Player.STATE_IDLE
 
     val isBuffering = playbackState == Player.STATE_BUFFERING
     val isEnded = playbackState == Player.STATE_ENDED
@@ -604,15 +776,15 @@ private fun PlayerControls(
                         },
                         onSeekBackward = {
                             exoPlayer?.seekTo((currentPosition - 10000).coerceAtLeast(0))
-                            Toast.makeText(context, "快退 10 秒", Toast.LENGTH_SHORT).show()
                         },
                         onSeekForward = {
                             exoPlayer?.seekTo((currentPosition + 10000).coerceAtMost(duration))
-                            Toast.makeText(context, "快进 10 秒", Toast.LENGTH_SHORT).show()
                         },
                         onTap = onShowControlsTemporarily,
                         onHideControls = onHideControlsNow,
-                        onUpdateInteractionTime = onUpdateInteractionTime
+                        onUpdateInteractionTime = onUpdateInteractionTime,
+                        onResizeModeChange = onResizeModeChange,
+                        resizeMode = resizeMode
                     )
                 } else {
                     LockedOverlay(onUnlock = onLock)
@@ -644,7 +816,9 @@ private fun VideoPlayerOverlay(
     onSeekForward: () -> Unit,
     onTap: () -> Unit,
     onHideControls: () -> Unit,
-    onUpdateInteractionTime: () -> Unit
+    onUpdateInteractionTime: () -> Unit,
+    onResizeModeChange: () -> Unit,
+    resizeMode: Int
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         TapGestureLayer(
@@ -683,7 +857,9 @@ private fun VideoPlayerOverlay(
                     isFullscreen = isFullscreen,
                     onBack = onBack,
                     onFullscreen = onFullscreen,
-                    onLock = onLock
+                    onLock = onLock,
+                    onResizeModeChange = onResizeModeChange,
+                    resizeMode = resizeMode
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -734,12 +910,15 @@ private fun TapGestureLayer(
     )
 }
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun TopBar(
     isFullscreen: Boolean,
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
-    onLock: () -> Unit
+    onLock: () -> Unit,
+    onResizeModeChange: () -> Unit,
+    resizeMode: Int
 ) {
     Row(
         modifier = Modifier
@@ -755,6 +934,18 @@ private fun TopBar(
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (isFullscreen) {
+                ControlButton(
+                    onClick = onResizeModeChange,
+                    icon = when (resizeMode) {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT -> Icons.Default.AspectRatio
+                        AspectRatioFrameLayout.RESIZE_MODE_FILL -> Icons.Default.ZoomOutMap
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> Icons.Default.CenterFocusStrong
+                        else -> Icons.Default.AspectRatio
+                    },
+                    contentDescription = "缩放模式"
+                )
+            }
             ControlButton(
                 onClick = onLock,
                 icon = Icons.Default.Lock,
