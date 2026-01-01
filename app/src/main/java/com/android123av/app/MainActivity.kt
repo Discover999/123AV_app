@@ -6,7 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -18,9 +17,7 @@ import com.android123av.app.components.AppNavigationBar
 import com.android123av.app.screens.*
 import com.android123av.app.state.rememberAppState
 import com.android123av.app.state.rememberUserState
-import com.android123av.app.state.UserStateManager
 import com.android123av.app.network.initializeNetworkService
-import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
 import java.io.File
 
@@ -50,9 +47,7 @@ class MainActivity : ComponentActivity() {
         coil.Coil.setImageLoader(imageLoader)
         
         initializeNetworkService(this)
-        
-        UserStateManager.initialize(this)
-        ThemeStateManager.initialize(this)
+
         
         enableEdgeToEdge()
         setContent {

@@ -71,6 +71,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation(libs.androidx.compose.foundation)
     implementation(libs.play.services.cast)
+    implementation(libs.androidx.compose.animation)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
