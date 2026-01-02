@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.*
@@ -19,13 +20,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -46,11 +55,11 @@ enum class SortOption(val displayName: String, val param: String) {
     RELEASE_DATE("发布日期", "release_date"),
     RECENT_UPDATE("最近更新", "recent_update"),
     TRENDING("热门", "trending"),
+    MOST_FAVOURITE("最受欢迎", "most_favourited"),
     MOST_VIEWED_TODAY("今天最多观看", "most_viewed_today"),
     MOST_VIEWED_WEEK("本周最多观看", "most_viewed_week"),
     MOST_VIEWED_MONTH("本月最多观看", "most_viewed_month"),
-    MOST_VIEWED("最多观看", "most_viewed"),
-    MOST_FAVOURITE("最受欢迎", "most_favourited")
+    MOST_VIEWED("最多观看", "most_viewed")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,7 +79,6 @@ fun HomeScreen(
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
     var refreshTrigger by remember { mutableStateOf(0) }
     var selectedSortOption by remember { mutableStateOf(SortOption.RELEASE_DATE) }
-    var isSortMenuExpanded by remember { mutableStateOf(false) }
 
     fun getCategoryUrl(category: String): String {
         return when (category) {
@@ -187,6 +195,17 @@ fun HomeScreen(
                 }
             )
 
+            if (selectedCategory == "未审查") {
+                SortOptionsBar(
+                    selectedSortOption = selectedSortOption,
+                    onSortOptionSelected = { sortOption ->
+                        selectedSortOption = sortOption
+                        currentPage = 1
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = {
@@ -226,18 +245,10 @@ fun HomeScreen(
                                         hasPrevPage = hasPrevPage,
                                         isLoading = isLoading,
                                         isCategoryChanging = isCategoryChanging,
-                                        isUncensored = selectedCategory == "未审查",
-                                        selectedSortOption = selectedSortOption,
-                                        isSortMenuExpanded = isSortMenuExpanded,
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- },
-                                        onPageSelected = { page -> currentPage = page },
-                                        onSortOptionSelected = { 
-                                            selectedSortOption = it
-                                            currentPage = 1
-                                        },
-                                        onSortMenuExpandChange = { isSortMenuExpanded = it }
+                                        onPageSelected = { page -> currentPage = page }
                                     )
                                 }
                                 ViewMode.GRID -> {
@@ -249,18 +260,10 @@ fun HomeScreen(
                                         hasPrevPage = hasPrevPage,
                                         isLoading = isLoading,
                                         isCategoryChanging = isCategoryChanging,
-                                        isUncensored = selectedCategory == "未审查",
-                                        selectedSortOption = selectedSortOption,
-                                        isSortMenuExpanded = isSortMenuExpanded,
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- },
-                                        onPageSelected = { page -> currentPage = page },
-                                        onSortOptionSelected = { 
-                                            selectedSortOption = it
-                                            currentPage = 1
-                                        },
-                                        onSortMenuExpandChange = { isSortMenuExpanded = it }
+                                        onPageSelected = { page -> currentPage = page }
                                     )
                                 }
                             }
@@ -297,15 +300,10 @@ private fun VideoListContent(
     hasPrevPage: Boolean,
     isLoading: Boolean,
     isCategoryChanging: Boolean,
-    isUncensored: Boolean,
-    selectedSortOption: SortOption,
-    isSortMenuExpanded: Boolean,
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit,
-    onPageSelected: (Int) -> Unit,
-    onSortOptionSelected: (SortOption) -> Unit,
-    onSortMenuExpandChange: (Boolean) -> Unit
+    onPageSelected: (Int) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -314,7 +312,7 @@ private fun VideoListContent(
                 start = 16.dp,
                 top = 16.dp,
                 end = 16.dp,
-                bottom = if (isUncensored) 100.dp else 80.dp
+                bottom = 80.dp
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -338,18 +336,6 @@ private fun VideoListContent(
             }
         }
 
-        if (isUncensored) {
-            SortButton(
-                selectedSortOption = selectedSortOption,
-                isExpanded = isSortMenuExpanded,
-                onExpandChange = onSortMenuExpandChange,
-                onSortOptionSelected = onSortOptionSelected,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 100.dp)
-            )
-        }
-
         LoadingOverlay(isLoading = isCategoryChanging)
     }
 }
@@ -363,15 +349,10 @@ private fun VideoGridContent(
     hasPrevPage: Boolean,
     isLoading: Boolean,
     isCategoryChanging: Boolean,
-    isUncensored: Boolean,
-    selectedSortOption: SortOption,
-    isSortMenuExpanded: Boolean,
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit,
-    onPageSelected: (Int) -> Unit,
-    onSortOptionSelected: (SortOption) -> Unit,
-    onSortMenuExpandChange: (Boolean) -> Unit
+    onPageSelected: (Int) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -381,7 +362,7 @@ private fun VideoGridContent(
                 start = 16.dp,
                 top = 16.dp,
                 end = 16.dp,
-                bottom = if (isUncensored) 100.dp else 80.dp
+                bottom = 80.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -404,18 +385,6 @@ private fun VideoGridContent(
                     onPageSelected = onPageSelected
                 )
             }
-        }
-
-        if (isUncensored) {
-            SortButton(
-                selectedSortOption = selectedSortOption,
-                isExpanded = isSortMenuExpanded,
-                onExpandChange = onSortMenuExpandChange,
-                onSortOptionSelected = onSortOptionSelected,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 100.dp)
-            )
         }
 
         LoadingOverlay(isLoading = isCategoryChanging)
@@ -503,79 +472,84 @@ private enum class ContentState {
 }
 
 @Composable
-fun SortButton(
+private fun SortOptionsBar(
     selectedSortOption: SortOption,
-    isExpanded: Boolean,
-    onExpandChange: (Boolean) -> Unit,
     onSortOptionSelected: (SortOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.wrapContentSize(Alignment.BottomEnd)) {
-        Surface(
-            onClick = { onExpandChange(!isExpanded) },
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shadowElevation = 8.dp
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Text(
+                text = "排序方式",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(1.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            ) {}
+            IconButton(
+                onClick = { isExpanded = !isExpanded },
+                modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Sort,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Text(
-                    text = selectedSortOption.displayName,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Icon(
-                    imageVector = Icons.Default.ArrowDropDown,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) "收起" else "展开",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
 
-        DropdownMenu(
-            expanded = isExpanded,
-            onDismissRequest = { onExpandChange(false) },
-            modifier = Modifier.widthIn(min = 180.dp)
-        ) {
-            SortOption.entries.forEach { sortOption ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = sortOption.displayName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (sortOption == selectedSortOption) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-                        )
-                    },
-                    onClick = {
-                        onSortOptionSelected(sortOption)
-                        onExpandChange(false)
-                    },
-                    leadingIcon = if (sortOption == selectedSortOption) {
-                        {
+        if (isExpanded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SortOption.entries.forEach { sortOption ->
+                    val isSelected = sortOption == selectedSortOption
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onSortOptionSelected(sortOption) },
+                        label = {
+                            Text(
+                                text = sortOption.displayName,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        },
+                        leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.Apps,
+                                imageVector = when (sortOption) {
+                                    SortOption.RELEASE_DATE -> if (isSelected) Icons.Filled.DateRange else Icons.Outlined.DateRange
+                                    SortOption.RECENT_UPDATE -> if (isSelected) Icons.Filled.KeyboardArrowUp else Icons.Outlined.KeyboardArrowUp
+                                    SortOption.TRENDING -> if (isSelected) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Outlined.TrendingUp
+                                    SortOption.MOST_FAVOURITE -> if (isSelected) Icons.Filled.Star else Icons.Outlined.Star
+                                    SortOption.MOST_VIEWED_TODAY -> if (isSelected) Icons.Filled.Visibility else Icons.Outlined.Visibility
+                                    SortOption.MOST_VIEWED_WEEK -> if (isSelected) Icons.Filled.Visibility else Icons.Outlined.Visibility
+                                    SortOption.MOST_VIEWED_MONTH -> if (isSelected) Icons.Filled.Visibility else Icons.Outlined.Visibility
+                                    SortOption.MOST_VIEWED -> if (isSelected) Icons.Filled.Visibility else Icons.Outlined.Visibility
+                                },
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
-                        }
-                    } else null
-                )
+                        },
+                        modifier = Modifier.height(36.dp)
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }
