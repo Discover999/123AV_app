@@ -3,7 +3,6 @@ package com.android123av.app.screens
 import android.util.Log
 import android.view.View
 import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -22,12 +21,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -48,6 +44,8 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
+import kotlinx.coroutines.launch
+import java.io.File
 import androidx.media3.ui.PlayerView
 import com.android123av.app.models.Video
 import com.android123av.app.models.VideoDetails
@@ -56,8 +54,11 @@ import com.android123av.app.network.fetchVideoDetails
 import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchVideoUrlParallel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import android.content.pm.ActivityInfo
+import android.os.Environment
+import com.android123av.app.download.DownloadStatus
+import com.android123av.app.download.DownloadTask
+import com.android123av.app.download.M3U8DownloadManager
 import kotlinx.coroutines.async
 
 data class PlaybackSpeed(
@@ -106,6 +107,11 @@ fun VideoPlayerScreen(
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var videoWidth by remember { mutableIntStateOf(0) }
     var videoHeight by remember { mutableIntStateOf(0) }
+    
+    val downloadManager = remember { M3U8DownloadManager(context) }
+    var existingDownloadTask by remember { mutableStateOf<DownloadTask?>(null) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableIntStateOf(0) }
     
     fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
@@ -501,6 +507,15 @@ fun VideoPlayerScreen(
                                 VideoInfoSection(
                                     video = video,
                                     videoDetails = videoDetails!!,
+                                    existingDownloadTask = existingDownloadTask,
+                                    downloadProgress = downloadProgress,
+                                    videoUrl = videoUrl,
+                                    downloadManager = downloadManager,
+                                    context = context,
+                                    coroutineScope = coroutineScope,
+                                    onDownloadTaskUpdated = { task -> existingDownloadTask = task },
+                                    onDownloadingStateChanged = { downloading -> isDownloading = downloading },
+                                    onDownloadProgressChanged = { progress -> downloadProgress = progress },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -1329,6 +1344,15 @@ private fun IdleIndicator() {
 private fun VideoInfoSection(
     video: Video,
     videoDetails: VideoDetails,
+    existingDownloadTask: DownloadTask?,
+    downloadProgress: Int,
+    videoUrl: String?,
+    downloadManager: M3U8DownloadManager,
+    context: android.content.Context,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onDownloadTaskUpdated: (DownloadTask?) -> Unit,
+    onDownloadingStateChanged: (Boolean) -> Unit,
+    onDownloadProgressChanged: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isTitleExpanded by remember { mutableStateOf(false) }
@@ -1481,18 +1505,54 @@ private fun VideoInfoSection(
                     )
                 }
                 
+                val buttonText = when {
+                    existingDownloadTask?.status == DownloadStatus.COMPLETED -> "已下载"
+                    existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> "下载中 ${downloadProgress}%"
+                    existingDownloadTask?.status == DownloadStatus.PAUSED -> "继续下载"
+                    existingDownloadTask?.status == DownloadStatus.FAILED -> "重试下载"
+                    else -> "下载"
+                }
+                
+                val buttonIcon = when {
+                    existingDownloadTask?.status == DownloadStatus.COMPLETED -> Icons.Default.DownloadDone
+                    existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> Icons.Default.Download
+                    else -> Icons.Default.Download
+                }
+                
+                val isButtonEnabled = existingDownloadTask?.status != DownloadStatus.DOWNLOADING
+                
                 OutlinedButton(
-                    onClick = { },
+                    onClick = {
+                        handleDownload(
+                            video = video,
+                            videoUrl = videoUrl,
+                            downloadManager = downloadManager,
+                            context = context,
+                            existingTask = existingDownloadTask,
+                            onTaskCreated = { taskId ->
+                                coroutineScope.launch {
+                                    val task = downloadManager.getTaskById(taskId)
+                                    onDownloadTaskUpdated(task)
+                                }
+                            },
+                            onDownloading = { downloading, progress ->
+                                onDownloadingStateChanged(downloading)
+                                onDownloadProgressChanged(progress)
+                            },
+                            coroutineScope = coroutineScope
+                        )
+                    },
+                    enabled = isButtonEnabled,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Share,
+                        imageVector = buttonIcon,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "分享",
+                        text = buttonText,
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -1570,6 +1630,87 @@ private fun InfoSection(
                         )
                     }
                 )
+            }
+        }
+    }
+}
+
+private fun handleDownload(
+    video: Video,
+    videoUrl: String?,
+    downloadManager: M3U8DownloadManager,
+    context: android.content.Context,
+    existingTask: DownloadTask?,
+    onTaskCreated: (Long) -> Unit,
+    onDownloading: (Boolean, Int) -> Unit,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
+    val url = videoUrl ?: video.videoUrl
+    
+    if (url.isNullOrBlank()) {
+        Toast.makeText(context, "无法获取视频地址", Toast.LENGTH_SHORT).show()
+        return
+    }
+    
+    when (existingTask?.status) {
+        DownloadStatus.COMPLETED -> {
+            Toast.makeText(context, "视频已下载", Toast.LENGTH_SHORT).show()
+        }
+        DownloadStatus.DOWNLOADING -> {
+            Toast.makeText(context, "下载进行中...", Toast.LENGTH_SHORT).show()
+        }
+        DownloadStatus.PAUSED -> {
+            coroutineScope.launch {
+                downloadManager.resumeDownload(existingTask.id)
+                onDownloading(true, existingTask.progress)
+                Toast.makeText(context, "继续下载...", Toast.LENGTH_SHORT).show()
+            }
+        }
+        DownloadStatus.FAILED -> {
+            coroutineScope.launch {
+                downloadManager.resumeDownload(existingTask.id)
+                onDownloading(true, existingTask.progress)
+                Toast.makeText(context, "重试下载...", Toast.LENGTH_SHORT).show()
+            }
+        }
+        else -> {
+            coroutineScope.launch {
+                try {
+                    val downloadDir = File(
+                        context.getExternalFilesDir(Environment.DIRECTORY_MOVIES),
+                        "123AV_Downloads"
+                    )
+                    if (!downloadDir.exists()) {
+                        downloadDir.mkdirs()
+                    }
+                    
+                    val sanitizedTitle = video.title.replace(Regex("[^a-zA-Z0-9\\u4e00-\\u9fa5]"), "_")
+                        .take(50)
+                    val taskDir = File(downloadDir, "${video.id}_$sanitizedTitle")
+                    if (!taskDir.exists()) {
+                        taskDir.mkdirs()
+                    }
+                    
+                    val task = DownloadTask(
+                        videoId = video.id,
+                        title = video.title,
+                        videoUrl = video.videoUrl ?: "",
+                        thumbnailUrl = video.thumbnailUrl,
+                        downloadUrl = url,
+                        savePath = taskDir.absolutePath,
+                        status = DownloadStatus.PENDING
+                    )
+                    
+                    val taskId = downloadManager.insertTask(task)
+                    onTaskCreated(taskId)
+                    onDownloading(true, 0)
+                    
+                    downloadManager.startDownload(taskId)
+                    Toast.makeText(context, "开始下载...", Toast.LENGTH_SHORT).show()
+                    
+                } catch (e: Exception) {
+                    Toast.makeText(context, "创建下载任务失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

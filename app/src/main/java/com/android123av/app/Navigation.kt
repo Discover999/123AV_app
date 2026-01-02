@@ -18,7 +18,8 @@ enum class AppDestinations(
     FAVORITES("收藏", Icons.Default.Favorite),
     PROFILE("我的", Icons.Default.AccountBox),
     VIDEO_PLAYER("视频播放", Icons.Default.PlayArrow),
-    LOGIN("登录", Icons.Default.AccountBox)
+    LOGIN("登录", Icons.Default.AccountBox),
+    DOWNLOADS("下载管理", Icons.Default.Favorite)
 }
 
 

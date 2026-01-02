@@ -122,6 +122,10 @@ fun MyApplicationApp() {
                 onNavigateToHelp = {
                     val intent = Intent(context, HelpActivity::class.java)
                     context.startActivity(intent)
+                },
+                onNavigateToDownloads = {
+                    val intent = Intent(context, DownloadsActivity::class.java)
+                    context.startActivity(intent)
                 }
             )
             else -> {

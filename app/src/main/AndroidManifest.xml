@@ -57,6 +57,12 @@
             android:label="帮助与反馈"
             android:theme="@style/Theme.MyApplication"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".DownloadsActivity"
+            android:exported="false"
+            android:label="下载管理"
+            android:theme="@style/Theme.MyApplication"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

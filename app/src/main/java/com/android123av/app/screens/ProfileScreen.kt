@@ -202,7 +202,8 @@ fun ProfileScreen(
     onNavigateToLogin: () -> Unit,
     onNavigateToNetworkTest: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToHelp: () -> Unit = {}
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToDownloads: () -> Unit = {}
 ) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showOptionsDialog by remember { mutableStateOf(false) }
@@ -272,7 +273,7 @@ fun ProfileScreen(
                             icon = Icons.Default.Download,
                             title = "下载管理",
                             subtitle = "已下载视频",
-                            onClick = { }
+                            onClick = { onNavigateToDownloads() }
                         )
                     }
                 }

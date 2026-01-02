@@ -1,0 +1,444 @@
+package com.android123av.app.download
+
+import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.*
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.security.MessageDigest
+import android.widget.Toast
+import androidx.core.net.toUri
+import kotlinx.coroutines.flow.Flow
+import java.io.BufferedReader
+import java.io.InputStreamReader
+
+class M3U8DownloadManager(private val context: Context) {
+    
+    private val okHttpClient = OkHttpClient.Builder()
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+    
+    private val database = DownloadDatabase.getInstance(context)
+    private val downloadTaskDao = database.downloadTaskDao()
+    
+    private var downloadJobs = mutableMapOf<Long, Job>()
+    
+    companion object {
+        private const val TAG = "M3U8DownloadManager"
+        private const val BUFFER_SIZE = 8192
+        private const val KEY_PREFIX = "#EXT-X-KEY:METHOD="
+        private const val SEGMENT_PREFIX = "#EXTINF:"
+    }
+    
+    suspend fun startDownload(taskId: Long) {
+        if (downloadJobs.containsKey(taskId)) {
+            Log.d(TAG, "Download already in progress for task: $taskId")
+            return
+        }
+        
+        val job = CoroutineScope(Dispatchers.IO).launch {
+            downloadM3U8(taskId)
+        }
+        
+        downloadJobs[taskId] = job
+    }
+    
+    fun pauseDownload(taskId: Long) {
+        downloadJobs[taskId]?.cancel()
+        downloadJobs.remove(taskId)
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            downloadTaskDao.updateStatus(taskId, DownloadStatus.PAUSED)
+        }
+    }
+    
+    fun cancelDownload(taskId: Long) {
+        downloadJobs[taskId]?.cancel()
+        downloadJobs.remove(taskId)
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            val task = downloadTaskDao.getTaskById(taskId)
+            task?.let {
+                deleteDownloadFiles(it.savePath)
+                downloadTaskDao.deleteTaskById(taskId)
+            }
+        }
+    }
+    
+    fun resumeDownload(taskId: Long) {
+        val task = runBlocking {
+            downloadTaskDao.getTaskById(taskId)
+        }
+        task?.let {
+            CoroutineScope(Dispatchers.IO).launch {
+                downloadTaskDao.updateStatus(taskId, DownloadStatus.PENDING)
+                startDownload(taskId)
+            }
+        }
+    }
+    
+    fun deleteDownload(taskId: Long) {
+        cancelDownload(taskId)
+    }
+    
+    suspend fun getTaskById(taskId: Long): DownloadTask? {
+        return downloadTaskDao.getTaskById(taskId)
+    }
+    
+    suspend fun insertTask(task: DownloadTask): Long {
+        return downloadTaskDao.insertTask(task)
+    }
+    
+    private suspend fun downloadM3U8(taskId: Long) {
+        val task = downloadTaskDao.getTaskById(taskId) ?: return
+        
+        try {
+            downloadTaskDao.updateStatus(taskId, DownloadStatus.DOWNLOADING)
+            
+            val saveDir = File(task.savePath)
+            if (!saveDir.exists()) {
+                saveDir.mkdirs()
+            }
+            
+            val baseUrl = task.downloadUrl ?: task.videoUrl
+            val playlistContent = fetchContent(baseUrl)
+            
+            if (playlistContent.isNullOrEmpty()) {
+                throw Exception("Failed to fetch m3u8 playlist")
+            }
+            
+            val isMasterPlaylist = isMasterPlaylist(playlistContent)
+            
+            if (isMasterPlaylist) {
+                val bestQualityUrl = selectBestQuality(playlistContent, baseUrl)
+                val mediaPlaylistContent = fetchContent(bestQualityUrl)
+                
+                if (mediaPlaylistContent.isNullOrEmpty()) {
+                    throw Exception("Failed to fetch media playlist")
+                }
+                
+                downloadMediaPlaylist(taskId, mediaPlaylistContent, bestQualityUrl, saveDir)
+            } else {
+                downloadMediaPlaylist(taskId, playlistContent, baseUrl, saveDir)
+            }
+            
+            downloadTaskDao.markCompleted(taskId, DownloadStatus.COMPLETED, System.currentTimeMillis())
+            
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "下载完成: ${task.title}", Toast.LENGTH_SHORT).show()
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Download failed for task $taskId", e)
+            downloadTaskDao.markFailed(taskId, DownloadStatus.FAILED, e.message ?: "Unknown error")
+            
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        } finally {
+            downloadJobs.remove(taskId)
+        }
+    }
+    
+    private suspend fun downloadMediaPlaylist(
+        taskId: Long,
+        playlistContent: String,
+        playlistUrl: String,
+        saveDir: File
+    ) {
+        val segments = parseMediaPlaylist(playlistContent)
+        val totalSegments = segments.size
+        
+        if (totalSegments == 0) {
+            throw Exception("No segments found in playlist")
+        }
+        
+        val playlistDir = File(saveDir, "playlist")
+        if (!playlistDir.exists()) {
+            playlistDir.mkdirs()
+        }
+        
+        var downloadedBytes = 0L
+        val segmentDir = File(saveDir, "segments")
+        if (!segmentDir.exists()) {
+            segmentDir.mkdirs()
+        }
+        
+        val keyUrl = extractKeyUrl(playlistContent)
+        var keyData: ByteArray? = null
+        
+        if (keyUrl != null) {
+            keyData = fetchKey(keyUrl)
+        }
+        
+        for ((index, segment) in segments.withIndex()) {
+            if (!isActive(taskId)) {
+                throw Exception("Download cancelled")
+            }
+            
+            val segmentFile = File(segmentDir, "segment_$index.ts")
+            val segmentUrl = resolveUrl(segment.url, playlistUrl)
+            
+            downloadSegment(segmentUrl, segmentFile)
+            
+            if (keyData != null) {
+                decryptSegment(segmentFile, keyData)
+            }
+            
+            downloadedBytes += segmentFile.length()
+            
+            val progress = ((index + 1) * 100) / totalSegments
+            downloadTaskDao.updateProgress(taskId, progress, downloadedBytes, 0)
+            
+            if ((index + 1) % 10 == 0 || index == totalSegments - 1) {
+                Log.d(TAG, "Downloaded ${index + 1}/$totalSegments segments")
+            }
+        }
+        
+        mergeSegments(taskId, segmentDir, saveDir, totalSegments)
+    }
+    
+    private suspend fun downloadSegment(url: String, outputFile: File) {
+        val request = Request.Builder()
+            .url(url)
+            .build()
+        
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to download segment: ${response.code}")
+            }
+            
+            response.body?.let { body ->
+                FileOutputStream(outputFile).use { fos ->
+                    body.byteStream().use { inputStream ->
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        var bytesRead: Int
+                        
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            fos.write(buffer, 0, bytesRead)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun decryptSegment(segmentFile: File, key: ByteArray) {
+        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+        val iv = extractIV(segmentFile)
+        val keySpec = javax.crypto.spec.SecretKeySpec(key, "AES")
+        val ivSpec = javax.crypto.spec.IvParameterSpec(iv)
+        
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, ivSpec)
+        
+        val encryptedData = segmentFile.readBytes()
+        val decryptedData = cipher.doFinal(encryptedData)
+        
+        FileOutputStream(segmentFile).use { fos ->
+            fos.write(decryptedData)
+        }
+    }
+    
+    private fun extractIV(segmentFile: File): ByteArray {
+        return ByteArray(16) { 0 }
+    }
+    
+    private suspend fun mergeSegments(
+        taskId: Long,
+        segmentDir: File,
+        saveDir: File,
+        totalSegments: Int
+    ) {
+        val outputFile = File(saveDir, "video.mp4")
+        
+        FileOutputStream(outputFile).use { fos ->
+            for (i in 0 until totalSegments) {
+                val segmentFile = File(segmentDir, "segment_$i.ts")
+                if (segmentFile.exists()) {
+                    fos.write(segmentFile.readBytes())
+                    segmentFile.delete()
+                }
+            }
+        }
+        
+        segmentDir.delete()
+    }
+    
+    private fun isMasterPlaylist(content: String): Boolean {
+        return content.contains("#EXT-X-STREAM-INF")
+    }
+    
+    private fun selectBestQuality(content: String, baseUrl: String): String {
+        val lines = content.split("\n")
+        var bestBandwidth = 0
+        var bestUrl: String? = null
+        
+        var currentBandwidth = 0
+        var currentUrl: String? = null
+        
+        for (line in lines) {
+            when {
+                line.startsWith("#EXT-X-STREAM-INF:BANDWIDTH=") -> {
+                    val bandwidthStr = line.substringAfter("BANDWIDTH=")
+                        .substringBefore(",")
+                        .substringBefore("\n")
+                        .trim()
+                    currentBandwidth = bandwidthStr.toIntOrNull() ?: 0
+                }
+                line.startsWith("#EXT-X-STREAM-INF:") -> {
+                    val bandwidthStr = line.substringAfter("BANDWIDTH=")
+                        .substringBefore(",")
+                        .substringBefore("\n")
+                        .trim()
+                    currentBandwidth = bandwidthStr.toIntOrNull() ?: 0
+                }
+                line.isNotEmpty() && !line.startsWith("#") -> {
+                    if (currentBandwidth > bestBandwidth) {
+                        bestBandwidth = currentBandwidth
+                        bestUrl = resolveUrl(line.trim(), baseUrl)
+                    }
+                    currentBandwidth = 0
+                }
+            }
+        }
+        
+        return bestUrl ?: content.lines().firstOrNull { it.isNotEmpty() && !it.startsWith("#") } ?: baseUrl
+    }
+    
+    private fun parseMediaPlaylist(content: String): List<DownloadSegment> {
+        val segments = mutableListOf<DownloadSegment>()
+        val lines = content.split("\n")
+        
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            
+            if (line.startsWith(SEGMENT_PREFIX)) {
+                val durationStr = line.substringAfter(SEGMENT_PREFIX)
+                    .substringBefore(",")
+                    .trim()
+                val duration = durationStr.toFloatOrNull() ?: 0f
+                
+                if (i + 1 < lines.size) {
+                    val urlLine = lines[i + 1].trim()
+                    if (urlLine.isNotEmpty() && !urlLine.startsWith("#")) {
+                        segments.add(
+                            DownloadSegment(
+                                url = urlLine,
+                                duration = duration,
+                                bandwidth = null,
+                                resolution = null
+                            )
+                        )
+                        i++
+                    }
+                }
+            }
+            
+            i++
+        }
+        
+        return segments
+    }
+    
+    private fun extractKeyUrl(content: String): String? {
+        val keyLine = content.lines().find { it.contains(KEY_PREFIX) } ?: return null
+        val method = keyLine.substringAfter(KEY_PREFIX)
+        
+        if (method.contains("AES-128")) {
+            val urlStart = keyLine.indexOf("URI=\"") + 5
+            val urlEnd = keyLine.indexOf("\"", urlStart)
+            
+            if (urlStart > 4 && urlEnd > urlStart) {
+                return keyLine.substring(urlStart, urlEnd).removeSurrounding("\"")
+            }
+        }
+        
+        return null
+    }
+    
+    private suspend fun fetchContent(url: String): String? {
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .build()
+            
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    response.body?.string()
+                } else {
+                    Log.e(TAG, "Failed to fetch content: ${response.code}")
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching content", e)
+            null
+        }
+    }
+    
+    private suspend fun fetchKey(url: String): ByteArray? {
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .build()
+            
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    response.body?.bytes()
+                } else {
+                    Log.e(TAG, "Failed to fetch key: ${response.code}")
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching key", e)
+            null
+        }
+    }
+    
+    private fun resolveUrl(url: String, baseUrl: String): String {
+        return when {
+            url.startsWith("http://") || url.startsWith("https://") -> url
+            url.startsWith("/") -> {
+                val baseUri = baseUrl.toUri()
+                "${baseUri.scheme}://${baseUri.host}$url"
+            }
+            else -> {
+                val lastSlashIndex = baseUrl.lastIndexOf('/')
+                if (lastSlashIndex > 0) {
+                    baseUrl.substring(0, lastSlashIndex + 1) + url
+                } else {
+                    baseUrl + "/" + url
+                }
+            }
+        }
+    }
+    
+    private fun deleteDownloadFiles(path: String) {
+        val dir = File(path)
+        if (dir.exists()) {
+            dir.deleteRecursively()
+        }
+    }
+    
+    private fun isActive(taskId: Long): Boolean {
+        return downloadJobs[taskId]?.isActive == true
+    }
+    
+    fun getActiveDownloads(): Flow<List<DownloadTask>> {
+        return downloadTaskDao.getTasksByStatus(DownloadStatus.DOWNLOADING)
+    }
+    
+    fun getCompletedDownloads(): Flow<List<DownloadTask>> {
+        return downloadTaskDao.getTasksByStatus(DownloadStatus.COMPLETED)
+    }
+    
+    fun getAllDownloads(): Flow<List<DownloadTask>> {
+        return downloadTaskDao.getAllTasks()
+    }
+}
