@@ -43,7 +43,7 @@ val faqList = listOf(
     ),
     FAQItem(
         question = "如何反馈问题或建议？",
-        answer = "您可以通过以下方式反馈：\n1. 在本页面点击\"意见反馈\"按钮\n2. 发送邮件至 support@android123av.app\n3. 加入官方QQ群：123456789"
+        answer = "您可以通过以下方式反馈：\n1. 在本页面点击\"意见反馈\"按钮"
     ),
     FAQItem(
         question = "应用闪退怎么办？",

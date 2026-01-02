@@ -15,9 +15,10 @@ import androidx.compose.ui.Modifier
 import coil.ImageLoader
 import com.android123av.app.components.AppNavigationBar
 import com.android123av.app.screens.*
-import com.android123av.app.state.rememberAppState
+import com.android123av.app.state.UserStateManager
 import com.android123av.app.state.rememberUserState
 import com.android123av.app.network.initializeNetworkService
+import com.android123av.app.state.rememberAppState
 import com.android123av.app.ui.theme.MyApplicationTheme
 import java.io.File
 
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
         coil.Coil.setImageLoader(imageLoader)
         
         initializeNetworkService(this)
+        UserStateManager.initialize(this)
 
         
         enableEdgeToEdge()
@@ -100,10 +102,8 @@ fun MyApplicationApp() {
                 }
             )
             AppDestinations.PROFILE -> ProfileScreen(
-                modifier = Modifier.padding(it),
                 context = context,
                 isLoggedIn = userState.isLoggedIn,
-                user = userState.getCurrentUser(),
                 onLogout = {
                     userState.performLogout()
                 },
