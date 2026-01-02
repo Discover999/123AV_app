@@ -51,6 +51,12 @@
             android:label="设置"
             android:theme="@style/Theme.MyApplication"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".HelpActivity"
+            android:exported="false"
+            android:label="帮助与反馈"
+            android:theme="@style/Theme.MyApplication"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

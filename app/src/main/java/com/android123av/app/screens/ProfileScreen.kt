@@ -1,5 +1,10 @@
 package com.android123av.app.screens
 
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageInfo
+import android.net.Uri
+
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -149,10 +154,12 @@ fun ProfileScreen(
     modifier: Modifier,
     isLoggedIn: Boolean,
     user: User?,
+    context: Context,
     onLogout: () -> Unit,
     onNavigateToLogin: () -> Unit,
     onNavigateToNetworkTest: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToHelp: () -> Unit = {}
 ) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
@@ -251,7 +258,7 @@ fun ProfileScreen(
                     icon = Icons.Default.Help,
                     title = "帮助与反馈",
                     subtitle = "常见问题",
-                    onClick = { }
+                    onClick = { onNavigateToHelp() }
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -283,7 +290,7 @@ fun ProfileScreen(
     }
     
     if (showAboutDialog) {
-        AboutDialog(onDismiss = { showAboutDialog = false })
+        AboutDialog(context = context, onDismiss = { showAboutDialog = false })
     }
     
     if (showLogoutDialog) {
@@ -298,7 +305,17 @@ fun ProfileScreen(
 }
 
 @Composable
-fun AboutDialog(onDismiss: () -> Unit) {
+fun AboutDialog(
+    context: Context,
+    onDismiss: () -> Unit
+) {
+    val versionName = try {
+        val packageInfo: PackageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        "版本 ${packageInfo.versionName}"
+    } catch (e: Exception) {
+        "版本 Unknow"
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -311,13 +328,50 @@ fun AboutDialog(onDismiss: () -> Unit) {
         text = {
             Column {
                 Text(
-                    text = "版本 1.0.0",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    text = versionName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 12.dp)
                 )
                 Text(
-                    text = "这是一个视频播放应用",
-                    style = MaterialTheme.typography.bodyMedium
+                    text = "123AV是一个专注于提供优质视频内容的视频网站。本应用程序与 www.123av.com 及其关联方无任何隶属、合作或授权关系，特此声明！",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Text(
+                    text = "本应用提供的所有内容仅用于：",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "📚 技术研究学习",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "✨ 移动端用户体验优化",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Text(
+                    text = "🚫 非商业用途展示",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                Text(
+                    text = "官方网站：www.123av.com",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.123av.com"))
+                        context.startActivity(intent)
+                    }
                 )
             }
         },

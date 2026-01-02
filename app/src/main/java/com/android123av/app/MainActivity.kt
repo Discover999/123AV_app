@@ -101,6 +101,7 @@ fun MyApplicationApp() {
             )
             AppDestinations.PROFILE -> ProfileScreen(
                 modifier = Modifier.padding(it),
+                context = context,
                 isLoggedIn = userState.isLoggedIn,
                 user = userState.getCurrentUser(),
                 onLogout = {
@@ -116,6 +117,10 @@ fun MyApplicationApp() {
                 },
                 onNavigateToSettings = {
                     val intent = Intent(context, SettingsActivity::class.java)
+                    context.startActivity(intent)
+                },
+                onNavigateToHelp = {
+                    val intent = Intent(context, HelpActivity::class.java)
                     context.startActivity(intent)
                 }
             )
