@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.play.services.cast)
     implementation(libs.androidx.compose.animation)
+    implementation(libs.androidx.constraintlayout)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

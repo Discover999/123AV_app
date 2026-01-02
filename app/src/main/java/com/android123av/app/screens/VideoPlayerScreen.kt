@@ -1,5 +1,6 @@
 package com.android123av.app.screens
 
+import android.util.Log
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -239,12 +240,20 @@ fun VideoPlayerScreen(
         coroutineScope.launch {
             try {
                 val videoUrlDeferred = async {
-                    if (!video.videoUrl.isNullOrBlank()) {
-                        video.videoUrl
+                    // 直接使用WebView拦截方式获取m3u8地址（最可靠的方式）
+                    val cachedUrl = video.videoUrl
+                    if (!cachedUrl.isNullOrBlank()) {
+                        Log.d("VideoPlayer", "✅ 使用缓存视频URL: $cachedUrl")
+                        cachedUrl
                     } else {
-                        fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                            ?: fetchVideoUrl(video.id)?.takeIf { it.contains(".m3u8") }
-                            ?: fetchM3u8UrlWithWebView(context, video.id)
+                        val webViewUrl = fetchM3u8UrlWithWebView(context, video.id)
+                        if (!webViewUrl.isNullOrBlank()) {
+                            Log.d("VideoPlayer", "✅ WebView拦截获取到URL: $webViewUrl")
+                            webViewUrl
+                        } else {
+                            Log.e("VideoPlayer", "❌ 无法获取视频URL")
+                            null
+                        }
                     }
                 }
                 
@@ -263,6 +272,7 @@ fun VideoPlayerScreen(
                     errorMessage = "无法获取视频播放地址"
                 }
             } catch (e: Exception) {
+                Log.e("VideoPlayer", "❌ 获取视频失败: ${e.message}")
                 errorMessage = "获取视频失败: ${e.message}"
             } finally {
                 isLoading = false
@@ -1327,104 +1337,238 @@ private fun VideoInfoSection(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp)
     ) {
-        Text(
-            text = video.title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = if (isTitleExpanded) Int.MAX_VALUE else 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        
-        if (video.title.length > 50) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = video.title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = if (isTitleExpanded) Int.MAX_VALUE else 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            if (video.title.length > 50) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { isTitleExpanded = !isTitleExpanded },
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            text = if (isTitleExpanded) "收起" else "展开",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            imageVector = if (isTitleExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                TextButton(
-                    onClick = { isTitleExpanded = !isTitleExpanded },
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text(
-                        text = if (isTitleExpanded) "收起" else "更多",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                DetailItem(
+                    icon = Icons.Default.Timer,
+                    label = "时长",
+                    value = videoDetails.duration.ifBlank { "--" }
+                )
+                if (videoDetails.performer.isNotBlank()) {
+                    DetailItem(
+                        icon = Icons.Default.Person,
+                        label = "演员",
+                        value = videoDetails.performer
                     )
+                }
+                DetailItem(
+                    icon = Icons.Default.Business,
+                    label = "制作",
+                    value = videoDetails.maker.ifBlank { "未知" }
+                )
+                DetailItem(
+                    icon = Icons.Default.Favorite,
+                    label = "热度",
+                    value = formatCount(videoDetails.favouriteCount)
+                )
+            }
+        }
+        
+        if (videoDetails.releaseDate.isNotBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
-                        imageVector = if (isTitleExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        imageVector = Icons.Default.CalendarMonth,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "发布于 ${videoDetails.releaseDate}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         }
         
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+        Column(
+            modifier = Modifier.padding(16.dp)
         ) {
-            InfoChip(
-                icon = Icons.Default.Timer,
-                text = videoDetails.duration
-            )
-            InfoChip(
-                icon = Icons.Default.Person,
-                text = videoDetails.maker.ifEmpty { "未知" }
-            )
-            InfoChip(
-                icon = Icons.Default.Favorite,
-                text = formatCount(videoDetails.favouriteCount)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        if (videoDetails.tags.isNotEmpty()) {
-            Text(
-                text = "标签: ${videoDetails.tags.joinToString(", ")}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        
-        if (videoDetails.genres.isNotEmpty()) {
-            Text(
-                text = "类型: ${videoDetails.genres.joinToString(", ")}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start
-        ) {
-            FilledTonalButton(
-                onClick = { },
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+            if (videoDetails.genres.isNotEmpty()) {
+                InfoSection(
+                    title = "类型",
+                    items = videoDetails.genres,
+                    icon = Icons.Default.Category
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            
+            if (videoDetails.tags.isNotEmpty()) {
+                InfoSection(
+                    title = "标签",
+                    items = videoDetails.tags,
+                    icon = Icons.Default.LocalOffer
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.FavoriteBorder,
-                    contentDescription = "收藏",
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "收藏",
-                    style = MaterialTheme.typography.labelMedium
+                FilledTonalButton(
+                    onClick = { },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FavoriteBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "收藏",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                
+                OutlinedButton(
+                    onClick = { },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "分享",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailItem(
+    icon: ImageVector,
+    label: String,
+    value: String
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun InfoSection(
+    title: String,
+    items: List<String>,
+    icon: ImageVector
+) {
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items.forEach { item ->
+                SuggestionChip(
+                    onClick = { },
+                    label = {
+                        Text(
+                            text = item,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 )
             }
         }

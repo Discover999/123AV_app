@@ -7,12 +7,14 @@ data class VideoDetails(
     val code: String,
     val releaseDate: String,
     val duration: String,
+    val performer: String,
     val genres: List<String>,
     val maker: String,
     val tags: List<String>,
     val favouriteCount: Int = 0
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
+        parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString() ?: "",
@@ -26,6 +28,7 @@ data class VideoDetails(
         parcel.writeString(code)
         parcel.writeString(releaseDate)
         parcel.writeString(duration)
+        parcel.writeString(performer)
         parcel.writeStringList(genres)
         parcel.writeString(maker)
         parcel.writeStringList(tags)
