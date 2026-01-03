@@ -218,7 +218,8 @@ class M3U8DownloadManager(private val context: Context) {
 
         mergeSegments(taskId, segmentDir, saveDir, totalSegments)
 
-        val totalBytes = calculateTotalBytes(segmentDir, totalSegments)
+        val outputFile = File(saveDir, "video.mp4")
+        val totalBytes = if (outputFile.exists()) outputFile.length() else 0L
         downloadTaskDao.updateProgress(taskId, 100f, downloadedBytes, 0, totalBytes)
     }
 

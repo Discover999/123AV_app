@@ -30,25 +30,20 @@ import java.util.concurrent.TimeUnit
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.LinkedHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
-// 视频URL缓存 - 使用LRU策略，内存中缓存最近访问的50个视频URL
 private val videoUrlCache = object : LinkedHashMap<String, CachedVideoUrl>(50, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedVideoUrl>?): Boolean {
         return size > 50
     }
 }
 
-// 缓存锁
 private val cacheLock = Any()
 
-// 缓存过期时间：30分钟
 private const val CACHE_EXPIRATION_MS = 30 * 60 * 1000L
 
-/**
- * 缓存的视频URL数据类
- */
 data class CachedVideoUrl(
     val url: String?,
     val timestamp: Long = System.currentTimeMillis()
@@ -56,9 +51,6 @@ data class CachedVideoUrl(
     fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > CACHE_EXPIRATION_MS
 }
 
-/**
- * 获取缓存的视频URL（带过期检查）
- */
 fun getCachedVideoUrl(videoId: String): String? {
     synchronized(cacheLock) {
         val cached = videoUrlCache[videoId]
@@ -73,27 +65,18 @@ fun getCachedVideoUrl(videoId: String): String? {
     }
 }
 
-/**
- * 缓存视频URL
- */
 fun cacheVideoUrl(videoId: String, url: String?) {
     synchronized(cacheLock) {
         videoUrlCache[videoId] = CachedVideoUrl(url)
     }
 }
 
-/**
- * 清除视频URL缓存
- */
 fun clearVideoUrlCache() {
     synchronized(cacheLock) {
         videoUrlCache.clear()
     }
 }
 
-/**
- * 预热指定视频ID的缓存（异步）
- */
 fun warmupCache(context: android.content.Context, videoId: String) {
     if (videoId.isBlank() || videoId.startsWith("fav_")) return
     
@@ -102,18 +85,10 @@ fun warmupCache(context: android.content.Context, videoId: String) {
             val url = fetchVideoUrlSync(videoId)
             cacheVideoUrl(videoId, url)
         } catch (e: Exception) {
-            // 静默忽略预热错误
         }
     }
 }
 
-/**
- * 并行获取视频URL - 同时尝试HTTP和WebView方式，取最快返回的结果
- * @param context Android上下文
- * @param videoId 视频ID
- * @param timeoutMs 超时时间（毫秒）
- * @return 视频URL或null
- */
 suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: String, timeoutMs: Long = 8000): String? = withContext(Dispatchers.IO) {
     if (videoId.isBlank()) {
         return@withContext null
@@ -182,9 +157,6 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
     finalResult
 }
 
-/**
- * 备用获取方法
- */
 private suspend fun tryFetchWithFallback(context: android.content.Context, videoId: String, isFavorite: Boolean): String? {
     return try {
         if (isFavorite) {
@@ -197,9 +169,6 @@ private suspend fun tryFetchWithFallback(context: android.content.Context, video
     }
 }
 
-/**
- * 同步获取视频URL（HTTP方式）
- */
 private fun fetchVideoUrlSync(videoId: String): String? {
     if (videoId.isBlank() || videoId.startsWith("fav_")) {
         return null
@@ -249,9 +218,6 @@ private fun fetchVideoUrlSync(videoId: String): String? {
     }
 }
 
-/**
- * 快速WebView获取M3U8链接 - 优化版本，减少超时时间和开销
- */
 suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoId: String, timeoutMs: Long = 5000): String? = withContext(Dispatchers.IO) {
     if (videoId.isBlank()) {
         return@withContext null
@@ -264,12 +230,17 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
         var webView: WebView? = null
         var timeoutHandler: Handler? = null
         var timeoutRunnable: Runnable? = null
+        val foundResult = AtomicBoolean(false)
         
         val cleanup = {
             try {
                 timeoutHandler?.removeCallbacks(timeoutRunnable!!)
-                webView?.stopLoading()
-                webView?.destroy()
+                webView?.let { wv ->
+                    Handler(Looper.getMainLooper()).post {
+                        wv.stopLoading()
+                        wv.destroy()
+                    }
+                }
             } catch (e: Exception) {
             }
         }
@@ -292,13 +263,11 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
             
             currentWebView.setLayerType(View.LAYER_TYPE_NONE, null)
             
-            var foundResult = false
-            
             currentWebView.webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val url = request.url.toString()
                     
-                    if (foundResult || result.isCompleted) {
+                    if (foundResult.get() || result.isCompleted) {
                         return super.shouldInterceptRequest(view, request)
                     }
                     
@@ -311,9 +280,10 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
                                      urlLower.contains(".mpd?")
                     
                     if (isVideoFile) {
-                        foundResult = true
-                        result.complete(url)
-                        cleanup()
+                        if (foundResult.compareAndSet(false, true)) {
+                            result.complete(url)
+                            cleanup()
+                        }
                     }
                     
                     return super.shouldInterceptRequest(view, request)
@@ -323,7 +293,7 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
             timeoutHandler = Handler(context.mainLooper)
             timeoutRunnable = Runnable {
                 if (!result.isCompleted) {
-                    foundResult = true
+                    foundResult.set(true)
                     result.complete(null)
                     cleanup()
                 }
@@ -341,16 +311,11 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
     result.await()
 }
 
-// 全局变量用于存储PersistentCookieJar实例
 private var persistentCookieJar: PersistentCookieJar? = null
 
-// OkHttpClient实例 - 配置持久化cookie管理器
 lateinit var okHttpClient: OkHttpClient
     private set
 
-/**
- * 初始化网络服务，必须在应用启动时调用
- */
 fun initializeNetworkService(context: Context) {
     if (persistentCookieJar == null) {
         persistentCookieJar = PersistentCookieJar(context)
@@ -372,15 +337,10 @@ fun initializeNetworkService(context: Context) {
         .build()
 }
 
-/**
- * 获取PersistentCookieJar实例
- */
 fun getPersistentCookieJar(): PersistentCookieJar? = persistentCookieJar
 
-// Gson实例
 val gson = Gson()
 
-// 登录请求函数
 suspend fun login(username: String, password: String): LoginResponse = withContext(Dispatchers.IO) {
     val loginUrl = "https://123av.com/zh/ajax/user/signin"
     
@@ -430,7 +390,6 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
     }
 }
 
-// 获取用户信息函数
 suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
     val userInfoUrl = "https://123av.com/zh/ajax/user/info"
     
@@ -464,7 +423,6 @@ suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
     }
 }
 
-// 获取网络数据的函数（带响应内容）
 suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<Video>, String> = withContext(Dispatchers.IO) {
     val fullUrl = if (page > 1) {
         if (url.contains("?")) {
@@ -507,7 +465,6 @@ suspend fun fetchVideosData(url: String, page: Int = 1): List<Video> {
     return videos
 }
 
-// 根据视频ID获取视频播放URL的函数
 suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO) {
     try {
         if (videoId.isBlank() || videoId.startsWith("fav_")) {
@@ -561,11 +518,9 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
     return@withContext null
 }
 
-// 使用WebView拦截网络请求获取M3U8链接的函数
 suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: String): String? = 
     fetchM3u8UrlWithWebViewFast(context, videoId, 5000)
 
-// 解析HTML获取视频信息的函数
 fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     val videos = mutableListOf<Video>()
     val doc: Document = Jsoup.parse(html)
@@ -595,23 +550,21 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     if (videos.isEmpty()) {
         return Pair(emptyList(), PaginationInfo(1, 1, false, false))
     }
-
+    
     val paginationInfo = parsePaginationInfo(doc)
     
     return Pair(videos, paginationInfo)
 }
 
-// 搜索视频的函数
  suspend fun searchVideos(query: String, page: Int = 1): List<Video> = withContext(Dispatchers.IO) {
-    if (query.isBlank()) return@withContext emptyList()
-    
-    val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-    val searchUrl = "https://123av.com/zh/search?keyword=$encodedQuery"
-    
-    fetchVideosData(searchUrl, page)
-}
+     if (query.isBlank()) return@withContext emptyList()
+     
+     val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+     val searchUrl = "https://123av.com/zh/search?keyword=$encodedQuery"
+     
+     fetchVideosData(searchUrl, page)
+ }
 
-// 获取用户收藏视频的函数
 suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
     val favoritesUrl = "https://123av.com/zh/user/collection?page=$page"
     
@@ -640,7 +593,6 @@ suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo>
     }
 }
 
-// 解析收藏页面HTML的函数
 fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     val videos = mutableListOf<Video>()
     
@@ -690,17 +642,13 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     }
 }
 
-// 解析分页信息的辅助函数
 fun parsePaginationInfo(doc: Document): PaginationInfo {
-    // 查找当前页码
     val currentPageElement = doc.selectFirst("li.page-item.active span.page-link")
     val currentPage = currentPageElement?.text()?.toIntOrNull() ?: 1
 
-    // 查找所有页码链接
     val pageLinks = doc.select("li.page-item a.page-link")
     var totalPages = currentPage
 
-    // 遍历所有页码链接，找到最大的页码
     pageLinks.forEach { link ->
         val pageNum = link.text()?.toIntOrNull()
         if (pageNum != null && pageNum > totalPages) {
@@ -708,7 +656,6 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
         }
     }
 
-    // 检查是否有下一页和上一页
     val hasNextPage = doc.select("li.page-item a.page-link[rel*=next]").isNotEmpty()
     val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
 
@@ -720,10 +667,8 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     )
 }
 
-// 获取视频详情信息的函数
 suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Dispatchers.IO) {
     try {
-        // 构建视频详情页URL
         val videoDetailUrl = "https://123av.com/zh/v/$videoId"
         
         val request = Request.Builder()
@@ -748,5 +693,3 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
         return@withContext null
     }
 }
-
-

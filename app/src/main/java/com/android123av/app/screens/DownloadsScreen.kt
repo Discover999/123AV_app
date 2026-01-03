@@ -10,6 +10,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -71,10 +73,10 @@ fun DownloadsScreen(
     val failedTasks = downloadTasks.filter { it.status == DownloadStatus.FAILED }
     
     val tabs = listOf(
-        TabInfo("下载中", downloadingTasks.size, downloadingTasks),
-        TabInfo("已完成", completedTasks.size, completedTasks),
-        TabInfo("已暂停", pausedTasks.size, pausedTasks),
-        TabInfo("失败", failedTasks.size, failedTasks)
+        DownloadTabInfo("下载中", Icons.Default.CloudDownload, downloadingTasks.size, downloadingTasks),
+        DownloadTabInfo("已完成", Icons.Default.DownloadDone, completedTasks.size, completedTasks),
+        DownloadTabInfo("已暂停", Icons.Default.Pause, pausedTasks.size, pausedTasks),
+        DownloadTabInfo("失败", Icons.Default.Error, failedTasks.size, failedTasks)
     )
     
     Scaffold(
@@ -101,23 +103,11 @@ fun DownloadsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surface
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = {
-                            Text(
-                                text = "${tab.title} (${tab.count})",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
-                    )
-                }
-            }
+            DownloadCategoryTabs(
+                tabs = tabs,
+                selectedIndex = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
             
             val currentTasks = tabs[selectedTab].tasks
             
@@ -208,11 +198,89 @@ fun DownloadsScreen(
     }
 }
 
-private data class TabInfo(
+private data class DownloadTabInfo(
     val title: String,
+    val icon: ImageVector,
     val count: Int,
     val tasks: List<DownloadTask>
 )
+
+@Composable
+private fun DownloadCategoryTabs(
+    tabs: List<DownloadTabInfo>,
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        tabs.forEachIndexed { index, tab ->
+            DownloadCategoryChip(
+                tab = tab,
+                isSelected = selectedIndex == index,
+                onClick = { onTabSelected(index) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DownloadCategoryChip(
+    tab: DownloadTabInfo,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        animationSpec = tween(300),
+        label = "chipBackground"
+    )
+
+    val contentColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(300),
+        label = "chipContent"
+    )
+
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = backgroundColor
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = tab.icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = contentColor
+            )
+            Text(
+                text = "${tab.title} (${tab.count})",
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = contentColor,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
+}
 
 @Composable
 private fun DownloadTaskCard(
@@ -460,18 +528,16 @@ private fun DownloadTaskCard(
                     else -> {}
                 }
                 
-                if (task.status != DownloadStatus.COMPLETED) {
-                    IconButton(
-                        onClick = onCancel,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "删除",
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                IconButton(
+                    onClick = onCancel,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "删除",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

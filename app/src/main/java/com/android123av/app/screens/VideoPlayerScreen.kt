@@ -1,5 +1,6 @@
 package com.android123av.app.screens
 
+import android.content.Intent
 import android.util.Log
 import android.view.View
 import android.view.WindowInsets
@@ -44,9 +45,9 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
 import java.io.File
-import androidx.media3.ui.PlayerView
 import com.android123av.app.models.Video
 import com.android123av.app.models.VideoDetails
 import com.android123av.app.network.fetchM3u8UrlWithWebView
@@ -60,6 +61,7 @@ import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import androidx.compose.ui.draw.clip
+import com.android123av.app.DownloadsActivity
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
@@ -222,6 +224,8 @@ fun VideoPlayerScreen(
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 videoWidth = videoSize.width
                 videoHeight = videoSize.height
+                Log.d("VideoPlayer", "onVideoSizeChanged: width=${videoSize.width}, height=${videoSize.height}, " +
+                        "unappliedRotation=${videoSize.unappliedRotationDegrees}, currentResizeMode=$resizeMode")
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -405,24 +409,23 @@ fun VideoPlayerScreen(
                             AndroidView(
                                 factory = { ctx ->
                                     PlayerView(ctx).apply {
-                                        player = exoPlayer ?: ExoPlayer.Builder(ctx).build().apply {
-                                            val source = createMediaSource(videoUrl!!)
-                                            setMediaSource(source)
-                                            prepare()
-                                            playWhenReady = true
-                                            setupPlayerListener(this)
-                                            exoPlayer = this
-                                        }
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         useController = false
                                     }
                                 },
                                 modifier = Modifier.fillMaxSize(),
                                 update = { playerView ->
-                                    if (playerView.player != exoPlayer) {
-                                        playerView.player = exoPlayer
+                                    val currentPlayer = exoPlayer ?: ExoPlayer.Builder(context).build().apply {
+                                        val source = createMediaSource(videoUrl!!)
+                                        setMediaSource(source)
+                                        prepare()
+                                        playWhenReady = true
+                                        setupPlayerListener(this)
+                                        exoPlayer = this
                                     }
-                                    playerView.resizeMode = resizeMode
+                                    if (playerView.player != currentPlayer) {
+                                        playerView.player = currentPlayer
+                                    }
+                                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 }
                             )
 
@@ -455,27 +458,35 @@ fun VideoPlayerScreen(
                                 onHideControlsNow = { hideControls() },
                                 onShowControlsTemporarily = { showControlsTemporarily() },
                                 onResizeModeChange = {
+                                    Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
                                     resizeMode = when (resizeMode) {
                                         AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                        AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                        AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                                     }
+                                    Log.d("VideoPlayer", "Resize mode changed to: $resizeMode")
                                 },
                                 resizeMode = resizeMode
                             )
                         }
                     } else {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f/9f)) {
-                                AndroidView(
-                                    factory = { ctx ->
-                                        PlayerView(ctx).apply {
-                                            player = exoPlayer ?: ExoPlayer.Builder(ctx).build().apply {
+                        if (isPlaying && !isLocked) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(250.dp)
+                                ) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            PlayerView(ctx).apply {
+                                                useController = false
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                        update = { playerView ->
+                                            val currentPlayer = exoPlayer ?: ExoPlayer.Builder(context).build().apply {
                                                 val source = createMediaSource(videoUrl!!)
                                                 setMediaSource(source)
                                                 prepare()
@@ -483,74 +494,167 @@ fun VideoPlayerScreen(
                                                 setupPlayerListener(this)
                                                 exoPlayer = this
                                             }
-                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                            useController = false
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                    update = { playerView ->
-                                        if (playerView.player != exoPlayer) {
-                                            playerView.player = exoPlayer
-                                        }
-                                        playerView.resizeMode = resizeMode
-                                    }
-                                )
-
-                                PlayerControls(
-                                    exoPlayer = exoPlayer,
-                                    isFullscreen = isFullscreen,
-                                    isLocked = isLocked,
-                                    showSpeedSelector = showSpeedSelector,
-                                    currentSpeedIndex = currentSpeedIndex,
-                                    controlsAlpha = controlsAlpha,
-                                    showControls = showControls,
-                                    lastInteractionTime = lastInteractionTime,
-                                    onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
-                                    onFullscreen = { isFullscreen = !isFullscreen },
-                                    onLock = { isLocked = !isLocked },
-                                    onSpeedChange = { currentSpeedIndex = it },
-                                    onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
-                                    onPlayPause = {
-                                        exoPlayer?.let { player ->
-                                            if (player.isPlaying) {
-                                                player.pause()
-                                            } else {
-                                                player.play()
+                                            if (playerView.player != currentPlayer) {
+                                                playerView.player = currentPlayer
                                             }
+                                            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         }
-                                    },
-                                    onShowControls = { showControls = true },
-                                    onHideControls = { showControls = false },
-                                    onUpdateInteractionTime = { updateInteractionTime() },
-                                    onHideControlsNow = { hideControls() },
-                                    onShowControlsTemporarily = { showControlsTemporarily() },
-                                    onResizeModeChange = {
-                                        resizeMode = when (resizeMode) {
-                                            AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                            AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                        }
-                                    },
-                                    resizeMode = resizeMode
-                                )
-                            }
+                                    )
 
-                            if (videoDetails != null) {
-                                VideoInfoSection(
-                                    video = video,
-                                    videoDetails = videoDetails!!,
-                                    existingDownloadTask = existingDownloadTask,
-                                    downloadProgress = downloadProgress,
-                                    videoUrl = videoUrl,
-                                    downloadManager = downloadManager,
-                                    context = context,
-                                    coroutineScope = coroutineScope,
-                                    onDownloadTaskUpdated = { task -> existingDownloadTask = task },
-                                    onDownloadingStateChanged = { downloading -> isDownloading = downloading },
-                                    onDownloadProgressChanged = { progress -> downloadProgress = progress },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                    PlayerControls(
+                                        exoPlayer = exoPlayer,
+                                        isFullscreen = isFullscreen,
+                                        isLocked = isLocked,
+                                        showSpeedSelector = showSpeedSelector,
+                                        currentSpeedIndex = currentSpeedIndex,
+                                        controlsAlpha = controlsAlpha,
+                                        showControls = showControls,
+                                        lastInteractionTime = lastInteractionTime,
+                                        onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                        onFullscreen = { isFullscreen = !isFullscreen },
+                                        onLock = { isLocked = !isLocked },
+                                        onSpeedChange = { currentSpeedIndex = it },
+                                        onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                        onPlayPause = {
+                                            exoPlayer?.let { player ->
+                                                if (player.isPlaying) {
+                                                    player.pause()
+                                                } else {
+                                                    player.play()
+                                                }
+                                            }
+                                        },
+                                        onShowControls = { showControls = true },
+                                        onHideControls = { showControls = false },
+                                        onUpdateInteractionTime = { updateInteractionTime() },
+                                        onHideControlsNow = { hideControls() },
+                                        onShowControlsTemporarily = { showControlsTemporarily() },
+                                        onResizeModeChange = {
+                                            Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
+                                            resizeMode = when (resizeMode) {
+                                                AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                                AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            }
+                                            Log.d("VideoPlayer", "Resize mode changed to: $resizeMode")
+                                        },
+                                        resizeMode = resizeMode
+                                    )
+                                }
+
+                                if (videoDetails != null) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        VideoInfoSection(
+                                            video = video,
+                                            videoDetails = videoDetails!!,
+                                            existingDownloadTask = existingDownloadTask,
+                                            downloadProgress = downloadProgress,
+                                            videoUrl = videoUrl,
+                                            downloadManager = downloadManager,
+                                            context = context,
+                                            coroutineScope = coroutineScope,
+                                            onDownloadTaskUpdated = { task -> existingDownloadTask = task },
+                                            onDownloadingStateChanged = { downloading -> isDownloading = downloading },
+                                            onDownloadProgressChanged = { progress -> downloadProgress = progress },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Box(modifier = Modifier.fillMaxWidth().height(250.dp)) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            PlayerView(ctx).apply {
+                                                useController = false
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                        update = { playerView ->
+                                            val currentPlayer = exoPlayer ?: ExoPlayer.Builder(context).build().apply {
+                                                val source = createMediaSource(videoUrl!!)
+                                                setMediaSource(source)
+                                                prepare()
+                                                playWhenReady = true
+                                                setupPlayerListener(this)
+                                                exoPlayer = this
+                                            }
+                                            if (playerView.player != currentPlayer) {
+                                                playerView.player = currentPlayer
+                                            }
+                                            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        }
+                                    )
+
+                                    PlayerControls(
+                                        exoPlayer = exoPlayer,
+                                        isFullscreen = isFullscreen,
+                                        isLocked = isLocked,
+                                        showSpeedSelector = showSpeedSelector,
+                                        currentSpeedIndex = currentSpeedIndex,
+                                        controlsAlpha = controlsAlpha,
+                                        showControls = showControls,
+                                        lastInteractionTime = lastInteractionTime,
+                                        onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                        onFullscreen = { isFullscreen = !isFullscreen },
+                                        onLock = { isLocked = !isLocked },
+                                        onSpeedChange = { currentSpeedIndex = it },
+                                        onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                        onPlayPause = {
+                                            exoPlayer?.let { player ->
+                                                if (player.isPlaying) {
+                                                    player.pause()
+                                                } else {
+                                                    player.play()
+                                                }
+                                            }
+                                        },
+                                        onShowControls = { showControls = true },
+                                        onHideControls = { showControls = false },
+                                        onUpdateInteractionTime = { updateInteractionTime() },
+                                        onHideControlsNow = { hideControls() },
+                                        onShowControlsTemporarily = { showControlsTemporarily() },
+                                        onResizeModeChange = {
+                                            Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
+                                            resizeMode = when (resizeMode) {
+                                                AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                                AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            }
+                                            Log.d("VideoPlayer", "Resize mode changed to: $resizeMode")
+                                        },
+                                        resizeMode = resizeMode
+                                    )
+                                }
+
+                                if (videoDetails != null) {
+                                    VideoInfoSection(
+                                        video = video,
+                                        videoDetails = videoDetails!!,
+                                        existingDownloadTask = existingDownloadTask,
+                                        downloadProgress = downloadProgress,
+                                        videoUrl = videoUrl,
+                                        downloadManager = downloadManager,
+                                        context = context,
+                                        coroutineScope = coroutineScope,
+                                        onDownloadTaskUpdated = { task -> existingDownloadTask = task },
+                                        onDownloadingStateChanged = { downloading -> isDownloading = downloading },
+                                        onDownloadProgressChanged = { progress -> downloadProgress = progress },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
                     }
@@ -1545,7 +1649,11 @@ private fun VideoInfoSection(
                 onDownloadingStateChanged = onDownloadingStateChanged,
                 onDownloadProgressChanged = onDownloadProgressChanged,
                 video = video,
-                videoUrl = videoUrl
+                videoUrl = videoUrl,
+                onNavigateToDownloads = {
+                    val intent = Intent(context, DownloadsActivity::class.java)
+                    context.startActivity(intent)
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -1643,7 +1751,8 @@ private fun DownloadStatusCard(
     onDownloadingStateChanged: (Boolean) -> Unit,
     onDownloadProgressChanged: (Int) -> Unit,
     video: Video,
-    videoUrl: String?
+    videoUrl: String?,
+    onNavigateToDownloads: () -> Unit
 ) {
     val downloadStatus = existingDownloadTask?.status
     val preciseProgress = existingDownloadTask?.progressPercent ?: 0f
@@ -1706,7 +1815,16 @@ private fun DownloadStatusCard(
 
     if (statusInfo != null) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            val intent = Intent(context, DownloadsActivity::class.java)
+                            context.startActivity(intent)
+                        }
+                    )
+                },
             colors = CardDefaults.cardColors(
                 containerColor = statusInfo.backgroundColor
             ),
