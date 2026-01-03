@@ -53,9 +53,13 @@ import com.android123av.app.network.fetchM3u8UrlWithWebView
 import com.android123av.app.network.fetchVideoDetails
 import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchVideoUrlParallel
+import kotlinx.coroutines.flow.Flow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.os.Environment
+import androidx.compose.ui.draw.clip
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
@@ -277,11 +281,36 @@ fun VideoPlayerScreen(
                 if (videoUrl == null) {
                     errorMessage = "无法获取视频播放地址"
                 }
+                
+                val existingTask = downloadManager.getTaskByVideoId(video.id)
+                if (existingTask != null) {
+                    existingDownloadTask = existingTask
+                    Log.d("VideoPlayer", "✅ 找到现有下载任务: ${existingTask.id}, 进度: ${existingTask.progress}%")
+                }
             } catch (e: Exception) {
                 Log.e("VideoPlayer", "❌ 获取视频失败: ${e.message}")
                 errorMessage = "获取视频失败: ${e.message}"
             } finally {
                 isLoading = false
+            }
+        }
+    }
+    
+    LaunchedEffect(existingDownloadTask?.id) {
+        val taskId = existingDownloadTask?.id ?: return@LaunchedEffect
+        
+        Log.d("VideoPlayer", "🔄 开始观察下载任务: $taskId")
+        
+        downloadManager.observeTaskById(taskId).collect { updatedTask ->
+            if (updatedTask != null) {
+                Log.d("VideoPlayer", "📥 下载任务更新: 进度=${updatedTask.progress}%, 速度=${updatedTask.speedDisplay}")
+                existingDownloadTask = updatedTask
+                
+                if (updatedTask.status == DownloadStatus.DOWNLOADING) {
+                    isDownloading = true
+                } else if (updatedTask.status == DownloadStatus.COMPLETED) {
+                    isDownloading = false
+                }
             }
         }
     }
@@ -437,7 +466,11 @@ fun VideoPlayerScreen(
                             )
                         }
                     } else {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                        ) {
                             Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f/9f)) {
                                 AndroidView(
                                     factory = { ctx ->
@@ -1356,7 +1389,9 @@ private fun VideoInfoSection(
     modifier: Modifier = Modifier
 ) {
     var isTitleExpanded by remember { mutableStateOf(false) }
-    
+    val downloadStatus = existingDownloadTask?.status
+    val isDownloadActive = downloadStatus == DownloadStatus.DOWNLOADING
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1373,7 +1408,7 @@ private fun VideoInfoSection(
                 maxLines = if (isTitleExpanded) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis
             )
-            
+
             if (video.title.length > 50) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1397,42 +1432,61 @@ private fun VideoInfoSection(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                modifier = Modifier.fillMaxWidth()
             ) {
-                DetailItem(
-                    icon = Icons.Default.Timer,
-                    label = "时长",
-                    value = videoDetails.duration.ifBlank { "--" }
-                )
-                if (videoDetails.performer.isNotBlank()) {
-                    DetailItem(
-                        icon = Icons.Default.Person,
-                        label = "演员",
-                        value = videoDetails.performer
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    DetailItemContent(
+                        icon = Icons.Default.Timer,
+                        label = "时长",
+                        value = videoDetails.duration.ifBlank { "--" }
                     )
                 }
-                DetailItem(
-                    icon = Icons.Default.Business,
-                    label = "制作",
-                    value = videoDetails.maker.ifBlank { "未知" }
-                )
-                DetailItem(
-                    icon = Icons.Default.Favorite,
-                    label = "热度",
-                    value = formatCount(videoDetails.favouriteCount)
-                )
+                if (videoDetails.performer.isNotBlank()) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        DetailItemContent(
+                            icon = Icons.Default.Person,
+                            label = "演员",
+                            value = videoDetails.performer
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    DetailItemContent(
+                        icon = Icons.Default.Business,
+                        label = "制作",
+                        value = videoDetails.maker.ifBlank { "未知" }
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    DetailItemContent(
+                        icon = Icons.Default.Favorite,
+                        label = "热度",
+                        value = formatCount(videoDetails.favouriteCount)
+                    )
+                }
             }
         }
-        
+
         if (videoDetails.releaseDate.isNotBlank()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -1457,7 +1511,7 @@ private fun VideoInfoSection(
                 }
             }
         }
-        
+
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
@@ -1469,7 +1523,7 @@ private fun VideoInfoSection(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
-            
+
             if (videoDetails.tags.isNotEmpty()) {
                 InfoSection(
                     title = "标签",
@@ -1477,9 +1531,25 @@ private fun VideoInfoSection(
                     icon = Icons.Default.LocalOffer
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
+            DownloadStatusCard(
+                existingDownloadTask = existingDownloadTask,
+                downloadProgress = downloadProgress,
+                isDownloadActive = isDownloadActive,
+                downloadManager = downloadManager,
+                context = context,
+                coroutineScope = coroutineScope,
+                onDownloadTaskUpdated = onDownloadTaskUpdated,
+                onDownloadingStateChanged = onDownloadingStateChanged,
+                onDownloadProgressChanged = onDownloadProgressChanged,
+                video = video,
+                videoUrl = videoUrl
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1504,23 +1574,23 @@ private fun VideoInfoSection(
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
-                
+
                 val buttonText = when {
                     existingDownloadTask?.status == DownloadStatus.COMPLETED -> "已下载"
-                    existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> "下载中 ${downloadProgress}%"
+                    existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> "下载中 ${existingDownloadTask?.progressDisplay ?: "0.00%"}"
                     existingDownloadTask?.status == DownloadStatus.PAUSED -> "继续下载"
                     existingDownloadTask?.status == DownloadStatus.FAILED -> "重试下载"
                     else -> "下载"
                 }
-                
+
                 val buttonIcon = when {
                     existingDownloadTask?.status == DownloadStatus.COMPLETED -> Icons.Default.DownloadDone
                     existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> Icons.Default.Download
                     else -> Icons.Default.Download
                 }
-                
+
                 val isButtonEnabled = existingDownloadTask?.status != DownloadStatus.DOWNLOADING
-                
+
                 OutlinedButton(
                     onClick = {
                         handleDownload(
@@ -1562,13 +1632,256 @@ private fun VideoInfoSection(
 }
 
 @Composable
-private fun DetailItem(
+private fun DownloadStatusCard(
+    existingDownloadTask: DownloadTask?,
+    downloadProgress: Int,
+    isDownloadActive: Boolean,
+    downloadManager: M3U8DownloadManager,
+    context: android.content.Context,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onDownloadTaskUpdated: (DownloadTask?) -> Unit,
+    onDownloadingStateChanged: (Boolean) -> Unit,
+    onDownloadProgressChanged: (Int) -> Unit,
+    video: Video,
+    videoUrl: String?
+) {
+    val downloadStatus = existingDownloadTask?.status
+    val preciseProgress = existingDownloadTask?.progressPercent ?: 0f
+    val downloadSpeed = existingDownloadTask?.downloadSpeed ?: 0L
+    val speedDisplay = existingDownloadTask?.speedDisplay ?: "0 B/s"
+    val downloadedBytes = existingDownloadTask?.downloadedBytes ?: 0L
+    val totalBytes = existingDownloadTask?.totalBytes ?: 0L
+    val bytesDisplay = DownloadTask.formatBytes(downloadedBytes)
+    val totalBytesDisplay = DownloadTask.formatBytes(totalBytes)
+
+    val statusInfo = when (downloadStatus) {
+        DownloadStatus.COMPLETED -> DownloadStatusInfo(
+            icon = Icons.Default.CheckCircle,
+            iconColor = MaterialTheme.colorScheme.primary,
+            backgroundColor = MaterialTheme.colorScheme.primaryContainer,
+            statusText = "已下载完成",
+            statusDescription = "视频已保存在本地",
+            showProgress = false,
+            showSpeed = false
+        )
+        DownloadStatus.DOWNLOADING -> DownloadStatusInfo(
+            icon = Icons.Default.CloudDownload,
+            iconColor = MaterialTheme.colorScheme.tertiary,
+            backgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
+            statusText = "下载中 ${existingDownloadTask?.progressDisplay ?: "0.00%"}",
+            statusDescription = "$bytesDisplay / $totalBytesDisplay",
+            showProgress = true,
+            showSpeed = true,
+            speedText = speedDisplay
+        )
+        DownloadStatus.PAUSED -> DownloadStatusInfo(
+            icon = Icons.Default.PauseCircle,
+            iconColor = MaterialTheme.colorScheme.secondary,
+            backgroundColor = MaterialTheme.colorScheme.secondaryContainer,
+            statusText = "下载已暂停",
+            statusDescription = "已下载 ${existingDownloadTask?.progressDisplay ?: "0.00%"}",
+            showProgress = false,
+            showSpeed = false
+        )
+        DownloadStatus.FAILED -> DownloadStatusInfo(
+            icon = Icons.Default.Error,
+            iconColor = MaterialTheme.colorScheme.error,
+            backgroundColor = MaterialTheme.colorScheme.errorContainer,
+            statusText = "下载失败",
+            statusDescription = existingDownloadTask?.errorMessage ?: "点击重试下载",
+            showProgress = false,
+            showSpeed = false
+        )
+        DownloadStatus.PENDING -> DownloadStatusInfo(
+            icon = Icons.Default.Schedule,
+            iconColor = MaterialTheme.colorScheme.outline,
+            backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            statusText = "等待下载",
+            statusDescription = "准备中...",
+            showProgress = false,
+            showSpeed = false
+        )
+        else -> null
+    }
+
+    if (statusInfo != null) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = statusInfo.backgroundColor
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = statusInfo.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = statusInfo.iconColor
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = statusInfo.statusText,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = statusInfo.statusDescription,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                        if (statusInfo.showSpeed && statusInfo.speedText != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = statusInfo.iconColor.copy(alpha = 0.8f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = statusInfo.speedText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = statusInfo.iconColor.copy(alpha = 0.8f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    if (statusInfo.showProgress) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                progress = { (preciseProgress / 100f).coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxSize(),
+                                strokeWidth = 4.dp,
+                                color = statusInfo.iconColor,
+                                trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
+                            )
+                            Text(
+                                text = String.format("%.1f", preciseProgress),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = statusInfo.iconColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else if (downloadStatus == DownloadStatus.COMPLETED) {
+                        Icon(
+                            imageVector = Icons.Default.DownloadDone,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                if (statusInfo.showProgress) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { (preciseProgress / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = statusInfo.iconColor,
+                        trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "${existingDownloadTask?.progressDisplay ?: "0.00%"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = speedDisplay,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusInfo.iconColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                if (downloadStatus == DownloadStatus.PAUSED || downloadStatus == DownloadStatus.FAILED) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = {
+                            handleDownload(
+                                video = video,
+                                videoUrl = videoUrl,
+                                downloadManager = downloadManager,
+                                context = context,
+                                existingTask = existingDownloadTask,
+                                onTaskCreated = { taskId ->
+                                    coroutineScope.launch {
+                                        val task = downloadManager.getTaskById(taskId)
+                                        onDownloadTaskUpdated(task)
+                                    }
+                                },
+                                onDownloading = { downloading, progress ->
+                                    onDownloadingStateChanged(downloading)
+                                    onDownloadProgressChanged(progress)
+                                },
+                                coroutineScope = coroutineScope
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (downloadStatus == DownloadStatus.FAILED) "重试" else "继续",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+private data class DownloadStatusInfo(
+    val icon: ImageVector,
+    val iconColor: Color,
+    val backgroundColor: Color,
+    val statusText: String,
+    val statusDescription: String,
+    val showProgress: Boolean = false,
+    val showSpeed: Boolean = false,
+    val speedText: String? = null
+)
+
+@Composable
+private fun DetailItemContent(
     icon: ImageVector,
     label: String,
     value: String
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 4.dp)
     ) {
         Icon(
             imageVector = icon,
@@ -1581,7 +1894,10 @@ private fun DetailItem(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false
         )
         Text(
             text = label,
@@ -1662,14 +1978,14 @@ private fun handleDownload(
         DownloadStatus.PAUSED -> {
             coroutineScope.launch {
                 downloadManager.resumeDownload(existingTask.id)
-                onDownloading(true, existingTask.progress)
+                onDownloading(true, existingTask.progress.toInt())
                 Toast.makeText(context, "继续下载...", Toast.LENGTH_SHORT).show()
             }
         }
         DownloadStatus.FAILED -> {
             coroutineScope.launch {
                 downloadManager.resumeDownload(existingTask.id)
-                onDownloading(true, existingTask.progress)
+                onDownloading(true, existingTask.progress.toInt())
                 Toast.makeText(context, "重试下载...", Toast.LENGTH_SHORT).show()
             }
         }

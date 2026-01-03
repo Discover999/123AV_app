@@ -22,31 +22,59 @@ data class DownloadTask(
     val downloadUrl: String?,
     val savePath: String,
     val status: DownloadStatus = DownloadStatus.PENDING,
-    val progress: Int = 0,
+    val progress: Float = 0f,
     val totalBytes: Long = 0,
     val downloadedBytes: Long = 0,
+    val downloadSpeed: Long = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null,
     val errorMessage: String? = null
 ) {
     val isCompleted: Boolean
         get() = status == DownloadStatus.COMPLETED
-    
+
     val isDownloading: Boolean
         get() = status == DownloadStatus.DOWNLOADING
-    
+
     val canResume: Boolean
         get() = status == DownloadStatus.PAUSED || status == DownloadStatus.FAILED
-    
+
     val progressPercent: Float
-        get() = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0f
+        get() = if (totalBytes > 0) (downloadedBytes.toFloat() / totalBytes) * 100f else progress
+
+    val progressDisplay: String
+        get() = String.format("%.2f%%", progressPercent)
+
+    val speedDisplay: String
+        get() = formatSpeed(downloadSpeed)
+
+    companion object {
+        fun formatSpeed(bytesPerSecond: Long): String {
+            return when {
+                bytesPerSecond >= 1024 * 1024 * 1024 -> String.format("%.2f GB/s", bytesPerSecond / (1024.0 * 1024.0 * 1024.0))
+                bytesPerSecond >= 1024 * 1024 -> String.format("%.2f MB/s", bytesPerSecond / (1024.0 * 1024.0))
+                bytesPerSecond >= 1024 -> String.format("%.2f KB/s", bytesPerSecond / 1024.0)
+                else -> "$bytesPerSecond B/s"
+            }
+        }
+
+        fun formatBytes(bytes: Long): String {
+            return when {
+                bytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+                bytes >= 1024 * 1024 -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
+                bytes >= 1024 -> String.format("%.2f KB", bytes / 1024.0)
+                else -> "$bytes B"
+            }
+        }
+    }
 }
 
 data class DownloadSegment(
     val url: String,
     val duration: Float,
     val bandwidth: Int?,
-    val resolution: String?
+    val resolution: String?,
+    val estimatedBytes: Long = 0
 )
 
 data class M3U8Playlist(

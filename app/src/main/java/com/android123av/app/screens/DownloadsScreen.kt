@@ -1,9 +1,11 @@
 package com.android123av.app.screens
 
+import android.os.Build
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,11 +19,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -216,8 +222,6 @@ private fun DownloadTaskCard(
     onCancel: () -> Unit,
     onOpen: () -> Unit
 ) {
-    var showActions by remember { mutableStateOf(false) }
-    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -225,116 +229,249 @@ private fun DownloadTaskCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column {
-            Row(
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp)
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
                     model = task.thumbnailUrl,
                     contentDescription = null,
-                    modifier = Modifier
-                        .size(100.dp, 60.dp)
-                        .clip(RoundedCornerShape(8.dp)),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
                 
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        StatusBadge(status = task.status)
-                        
-                        if (task.status == DownloadStatus.DOWNLOADING) {
-                            Text(
-                                text = "${task.progress}%",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
+                when (task.status) {
+                    DownloadStatus.DOWNLOADING -> {
+                        CircularProgressIndicator(
+                            progress = { task.progress / 100f },
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.Black.copy(alpha = 0.3f),
+                            strokeWidth = 3.dp,
+                            strokeCap = StrokeCap.Round
+                        )
+                    }
+                    DownloadStatus.COMPLETED -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                                tint = Color.White
                             )
                         }
                     }
-                    
-                    Text(
-                        text = formatDate(task.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    DownloadStatus.PAUSED -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Pause,
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    DownloadStatus.FAILED -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                                tint = Color.Red
+                            )
+                        }
+                    }
+                    else -> {}
                 }
             }
             
-            if (task.status == DownloadStatus.DOWNLOADING) {
-                LinearProgressIndicator(
-                    progress = { task.progress / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            }
+            Spacer(modifier = Modifier.width(12.dp))
             
-            HorizontalDivider()
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.weight(1f)
             ) {
+                Text(
+                    text = task.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Spacer(modifier = Modifier.height(6.dp))
+                
                 when (task.status) {
                     DownloadStatus.DOWNLOADING -> {
-                        IconButton(onClick = onPause) {
-                            Icon(
-                                imageVector = Icons.Default.Pause,
-                                contentDescription = "暂停",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StatusBadge(status = task.status)
+                            Text(
+                                text = task.progressDisplay,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
-                    }
-                    DownloadStatus.PAUSED, DownloadStatus.FAILED -> {
-                        IconButton(onClick = onResume) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "继续",
-                                tint = MaterialTheme.colorScheme.primary
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = task.speedDisplay,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                            Text(
+                                text = "${DownloadTask.formatBytes(task.downloadedBytes)} / ${DownloadTask.formatBytes(task.totalBytes)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     DownloadStatus.COMPLETED -> {
-                        IconButton(onClick = onOpen) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StatusBadge(status = task.status)
+                            Text(
+                                text = DownloadTask.formatBytes(task.totalBytes),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    DownloadStatus.PAUSED -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StatusBadge(status = task.status)
+                            Text(
+                                text = task.progressDisplay,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    DownloadStatus.FAILED -> {
+                        StatusBadge(status = task.status)
+                        task.errorMessage?.let { error ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = error,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    DownloadStatus.PENDING -> {
+                        StatusBadge(status = task.status)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text(
+                    text = formatDate(task.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+            
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                when (task.status) {
+                    DownloadStatus.DOWNLOADING -> {
+                        FilledTonalIconButton(
+                            onClick = onPause,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Pause,
+                                contentDescription = "暂停",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    DownloadStatus.PAUSED, DownloadStatus.FAILED -> {
+                        FilledTonalIconButton(
+                            onClick = onResume,
+                            modifier = Modifier.size(40.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "继续",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    DownloadStatus.COMPLETED -> {
+                        FilledTonalIconButton(
+                            onClick = onOpen,
+                            modifier = Modifier.size(40.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.PlayCircle,
                                 contentDescription = "播放",
-                                tint = MaterialTheme.colorScheme.primary
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
                     else -> {}
                 }
                 
-                IconButton(onClick = onCancel) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "删除",
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                if (task.status != DownloadStatus.COMPLETED) {
+                    IconButton(
+                        onClick = onCancel,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "删除",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
