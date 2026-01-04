@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.android123av.app.DownloadsActivity
+import com.android123av.app.VideoPlayerActivity
 import com.android123av.app.download.DownloadDatabase
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
@@ -635,12 +637,9 @@ private fun openDownloadedVideo(context: android.content.Context, task: Download
     try {
         val videoFile = File(task.savePath, "video.mp4")
         if (videoFile.exists()) {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(
-                    Uri.fromFile(videoFile),
-                    "video/mp4"
-                )
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val intent = Intent(context, VideoPlayerActivity::class.java).apply {
+                putExtra("localVideoPath", videoFile.absolutePath)
+                putExtra("videoTitle", task.title)
             }
             context.startActivity(intent)
         } else {

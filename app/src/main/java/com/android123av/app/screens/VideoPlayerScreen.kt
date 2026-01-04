@@ -39,6 +39,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -59,6 +60,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Environment
 import androidx.compose.ui.draw.clip
 import com.android123av.app.DownloadsActivity
@@ -86,7 +88,8 @@ val playbackSpeeds = listOf(
 @Composable
 fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
-    video: Video,
+    video: Video? = null,
+    localVideoPath: String? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -181,10 +184,15 @@ fun VideoPlayerScreen(
     }
 
     fun createMediaSource(url: String): MediaSource {
-        val factory = DefaultHttpDataSource.Factory()
         return if (url.contains(".m3u8")) {
+            val factory = DefaultHttpDataSource.Factory()
             HlsMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(url))
+        } else if (url.startsWith("/") || url.startsWith("file://")) {
+            val fileUri = if (url.startsWith("file://")) url else Uri.fromFile(File(url)).toString()
+            val factory = DefaultDataSource.Factory(context)
+            ProgressiveMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(fileUri))
         } else {
+            val factory = DefaultHttpDataSource.Factory()
             ProgressiveMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(url))
         }
     }
@@ -247,7 +255,22 @@ fun VideoPlayerScreen(
         })
     }
 
+    LaunchedEffect(localVideoPath) {
+        if (!localVideoPath.isNullOrBlank()) {
+            val file = File(localVideoPath)
+            if (file.exists()) {
+                videoUrl = localVideoPath
+                isLoading = false
+            } else {
+                errorMessage = "视频文件不存在"
+                isLoading = false
+            }
+        }
+    }
+
     LaunchedEffect(video) {
+        if (video == null) return@LaunchedEffect
+        
         isLoading = true
         errorMessage = null
         
@@ -361,37 +384,53 @@ fun VideoPlayerScreen(
     }
 
     when {
-        isLoading -> LoadingState(video.title)
+        isLoading -> LoadingState(video?.title ?: "加载中...")
         errorMessage != null -> VideoErrorState(
             message = errorMessage!!,
             onBack = { onBack() },
             onRetry = {
-                errorMessage = null
-                isLoading = true
-                videoUrl = null
-                coroutineScope.launch {
-                    try {
-                        if (!video.videoUrl.isNullOrBlank()) {
-                            videoUrl = video.videoUrl
-                        } else {
-                            videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                            if (videoUrl == null) {
-                                val httpUrl = fetchVideoUrl(video.id)
-                                if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                    videoUrl = httpUrl
-                                } else {
-                                    videoUrl = fetchM3u8UrlWithWebView(context, video.id)
-                                }
-                            }
-                        }
-                        if (videoUrl == null) {
-                            errorMessage = "无法获取视频播放地址"
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = "获取视频失败: ${e.message}"
-                    } finally {
+                if (localVideoPath != null) {
+                    errorMessage = null
+                    isLoading = true
+                    val file = File(localVideoPath)
+                    if (file.exists()) {
+                        videoUrl = localVideoPath
+                        isLoading = false
+                    } else {
+                        errorMessage = "视频文件不存在"
                         isLoading = false
                     }
+                } else if (video != null) {
+                    errorMessage = null
+                    isLoading = true
+                    videoUrl = null
+                    coroutineScope.launch {
+                        try {
+                            if (!video.videoUrl.isNullOrBlank()) {
+                                videoUrl = video.videoUrl
+                            } else {
+                                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
+                                if (videoUrl == null) {
+                                    val httpUrl = fetchVideoUrl(video.id)
+                                    if (httpUrl != null && httpUrl.contains(".m3u8")) {
+                                        videoUrl = httpUrl
+                                    } else {
+                                        videoUrl = fetchM3u8UrlWithWebView(context, video.id)
+                                    }
+                                }
+                            }
+                            if (videoUrl == null) {
+                                errorMessage = "无法获取视频播放地址"
+                            }
+                        } catch (e: Exception) {
+                            errorMessage = "获取视频失败: ${e.message}"
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                } else {
+                    errorMessage = "无法加载视频"
+                    isLoading = false
                 }
             }
         )
@@ -543,7 +582,7 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                if (videoDetails != null) {
+                                if (videoDetails != null && video != null) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -551,7 +590,7 @@ fun VideoPlayerScreen(
                                             .verticalScroll(rememberScrollState())
                                     ) {
                                         VideoInfoSection(
-                                            video = video,
+                                            video = video!!,
                                             videoDetails = videoDetails!!,
                                             existingDownloadTask = existingDownloadTask,
                                             downloadProgress = downloadProgress,
@@ -639,9 +678,9 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                if (videoDetails != null) {
+                                if (videoDetails != null && video != null) {
                                     VideoInfoSection(
-                                        video = video,
+                                        video = video!!,
                                         videoDetails = videoDetails!!,
                                         existingDownloadTask = existingDownloadTask,
                                         downloadProgress = downloadProgress,

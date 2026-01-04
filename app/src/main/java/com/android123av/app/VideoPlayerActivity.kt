@@ -13,23 +13,24 @@ import androidx.compose.ui.Modifier
 import com.android123av.app.models.Video
 import com.android123av.app.screens.VideoPlayerScreen
 import com.android123av.app.ui.theme.MyApplicationTheme
+import java.io.File
 
 class VideoPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
-        // 从Intent中获取视频数据
         val video = intent.getParcelableExtra<Video>("video")
+        val localVideoPath = intent.getStringExtra("localVideoPath")
         
         setContent {
             MyApplicationTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) {
                     VideoPlayerScreen(
                         modifier = Modifier.padding(it),
-                        video = video!!,
+                        video = video,
+                        localVideoPath = localVideoPath,
                         onBack = {
-                            // 返回上一个Activity
                             finish()
                         }
                     )
