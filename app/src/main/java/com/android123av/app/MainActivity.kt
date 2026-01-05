@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import coil.ImageLoader
 import com.android123av.app.components.AppNavigationBar
 import com.android123av.app.screens.*
+import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.state.UserStateManager
 import com.android123av.app.state.rememberUserState
 import com.android123av.app.network.initializeNetworkService
@@ -22,6 +24,12 @@ import com.android123av.app.state.rememberAppState
 import com.android123av.app.ui.theme.MyApplicationTheme
 import java.io.File
 
+private fun updateStatusBarColor(activity: ComponentActivity) {
+    val isLightTheme = !ThemeStateManager.isDarkTheme()
+    WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+        isAppearanceLightStatusBars = isLightTheme
+    }
+}
 
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
@@ -49,10 +57,18 @@ class MainActivity : ComponentActivity() {
         
         initializeNetworkService(this)
         UserStateManager.initialize(this)
+        ThemeStateManager.initialize(this)
 
-        
         enableEdgeToEdge()
+        updateStatusBarColor(this)
+        
         setContent {
+            val currentTheme by ThemeStateManager.currentTheme.collectAsState()
+            
+            LaunchedEffect(currentTheme) {
+                updateStatusBarColor(this@MainActivity)
+            }
+            
             MyApplicationTheme {
                 MyApplicationApp()
             }

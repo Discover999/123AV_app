@@ -34,16 +34,35 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.view.WindowCompat
 import com.android123av.app.ui.theme.MyApplicationTheme
+import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.state.UserStateManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private fun ComponentActivity.updateStatusBarColor() {
+    val isLightTheme = !ThemeStateManager.isDarkTheme()
+    WindowCompat.getInsetsController(window, window.decorView).apply {
+        isAppearanceLightStatusBars = isLightTheme
+    }
+}
 
 class LoginActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        ThemeStateManager.initialize(this)
+        updateStatusBarColor()
+        
         setContent {
+            val currentTheme by ThemeStateManager.currentTheme.collectAsState()
+            
+            LaunchedEffect(currentTheme) {
+                updateStatusBarColor()
+            }
+            
             MyApplicationTheme {
                 LoginScreen(
                     onLoginSuccess = {

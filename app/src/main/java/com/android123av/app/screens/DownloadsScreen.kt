@@ -383,13 +383,19 @@ private fun DownloadTaskCard(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 
                 Spacer(modifier = Modifier.height(6.dp))
                 
@@ -420,11 +426,15 @@ private fun DownloadTaskCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.tertiary
                             )
-                            Text(
-                                text = "${DownloadTask.formatBytes(task.downloadedBytes)} / ${DownloadTask.formatBytes(task.totalBytes)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = "${DownloadTask.formatBytes(task.downloadedBytes)} / ${DownloadTask.formatBytes(task.totalBytes)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     DownloadStatus.COMPLETED -> {
@@ -433,11 +443,22 @@ private fun DownloadTaskCard(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             StatusBadge(status = task.status)
-                            Text(
-                                text = DownloadTask.formatBytes(task.totalBytes),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (task.duration > 0) {
+                                Text(
+                                    text = DownloadTask.formatDuration(task.duration),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = DownloadTask.formatBytes(task.totalBytes),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     DownloadStatus.PAUSED -> {
@@ -451,19 +472,34 @@ private fun DownloadTaskCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = "${DownloadTask.formatBytes(task.downloadedBytes)} / ${DownloadTask.formatBytes(task.totalBytes)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
                         }
                     }
                     DownloadStatus.FAILED -> {
                         StatusBadge(status = task.status)
                         task.errorMessage?.let { error ->
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = error,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                     DownloadStatus.PENDING -> {

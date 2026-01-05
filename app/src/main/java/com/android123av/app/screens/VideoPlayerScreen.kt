@@ -67,6 +67,7 @@ import com.android123av.app.DownloadsActivity
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
+import com.android123av.app.state.DownloadPathManager
 import kotlinx.coroutines.async
 
 data class PlaybackSpeed(
@@ -449,6 +450,12 @@ fun VideoPlayerScreen(
                                 factory = { ctx ->
                                     PlayerView(ctx).apply {
                                         useController = false
+                                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                        layoutParams = android.widget.FrameLayout.LayoutParams(
+                                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                                        )
+                                        setPadding(0, 0, 0, 0)
                                     }
                                 },
                                 modifier = Modifier.fillMaxSize(),
@@ -521,6 +528,12 @@ fun VideoPlayerScreen(
                                         factory = { ctx ->
                                             PlayerView(ctx).apply {
                                                 useController = false
+                                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                                layoutParams = android.widget.FrameLayout.LayoutParams(
+                                                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                                                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                                                )
+                                                setPadding(0, 0, 0, 0)
                                             }
                                         },
                                         modifier = Modifier.fillMaxSize(),
@@ -617,6 +630,12 @@ fun VideoPlayerScreen(
                                         factory = { ctx ->
                                             PlayerView(ctx).apply {
                                                 useController = false
+                                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                                layoutParams = android.widget.FrameLayout.LayoutParams(
+                                                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                                                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                                                )
+                                                setPadding(0, 0, 0, 0)
                                             }
                                         },
                                         modifier = Modifier.fillMaxSize(),
@@ -2149,10 +2168,7 @@ private fun handleDownload(
         else -> {
             coroutineScope.launch {
                 try {
-                    val downloadDir = File(
-                        context.getExternalFilesDir(Environment.DIRECTORY_MOVIES),
-                        "123AV_Downloads"
-                    )
+                    val downloadDir = File(DownloadPathManager.getCurrentPath(context))
                     if (!downloadDir.exists()) {
                         downloadDir.mkdirs()
                     }

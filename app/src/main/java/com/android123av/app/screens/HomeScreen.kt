@@ -149,11 +149,19 @@ fun HomeScreen(
                             )
                         }
                         Column {
-                            Text(
-                                text = "123AV",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row {
+                                Text(
+                                    text = "123",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "AV",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFE85A83)
+                                )
+                            }
                             Text(
                                 text = "精选视频",
                                 style = MaterialTheme.typography.labelSmall,

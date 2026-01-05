@@ -26,6 +26,7 @@ data class DownloadTask(
     val totalBytes: Long = 0,
     val downloadedBytes: Long = 0,
     val downloadSpeed: Long = 0,
+    val duration: Long = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null,
     val errorMessage: String? = null
@@ -64,6 +65,17 @@ data class DownloadTask(
                 bytes >= 1024 * 1024 -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
                 bytes >= 1024 -> String.format("%.2f KB", bytes / 1024.0)
                 else -> "$bytes B"
+            }
+        }
+
+        fun formatDuration(seconds: Long): String {
+            val hours = seconds / 3600
+            val minutes = (seconds % 3600) / 60
+            val secs = seconds % 60
+            return if (hours > 0) {
+                String.format("%d:%02d:%02d", hours, minutes, secs)
+            } else {
+                String.format("%d:%02d", minutes, secs)
             }
         }
     }
