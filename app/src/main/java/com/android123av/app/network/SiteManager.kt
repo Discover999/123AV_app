@@ -2,6 +2,7 @@ package com.android123av.app.network
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.android123av.app.state.UserStateManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,6 +93,7 @@ object SiteManager {
         _selectedSite.value = site
 
         if (previousSite.id != site.id) {
+            UserStateManager.onLogout()
             siteChangeListener?.invoke(site)
         }
     }

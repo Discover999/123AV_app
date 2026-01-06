@@ -73,7 +73,6 @@ fun NetworkTestScreen(
     var endpoints by remember { mutableStateOf<List<NetworkEndpoint>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        currentIPInfo = fetchIPInfo()
         selectedSite = SiteManager.getCurrentSite()
         endpoints = SiteManager.availableSites.map { site ->
             NetworkEndpoint(
@@ -81,6 +80,10 @@ fun NetworkTestScreen(
                 url = "${site.baseUrl}/zh",
                 description = site.description
             )
+        }
+        
+        coroutineScope.launch {
+            currentIPInfo = fetchIPInfo()
         }
     }
 
@@ -287,35 +290,75 @@ private fun IPAddressCard(
     }
 }
 
+private val ipInfoApis = listOf(
+    "https://api.ip.sb/geoip",
+    "https://ipapi.co/json/",
+    "https://freeipapi.com/api/json",
+    "https://ip-api.com/json/"
+)
+
 private suspend fun fetchIPInfo(): IPInfo {
     return withContext(Dispatchers.IO) {
-        try {
-            val url = URL("https://api.ip.sb/geoip")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-            
-            val responseCode = connection.responseCode
-            if (responseCode == 200) {
-                val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                val response = reader.readText()
-                reader.close()
+        var lastException: Exception? = null
+        
+        for ((index, apiUrl) in ipInfoApis.withIndex()) {
+            try {
+                val url = URL(apiUrl)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
                 
-                val json = JSONObject(response)
-                IPInfo(
-                    ip = json.optString("ip", "-"),
-                    countryCode = json.optString("country_code", "-"),
-                    country = json.optString("country", "-"),
-                    organization = json.optString("organization", ""),
-                    isp = json.optString("isp", "-")
-                )
-            } else {
-                IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
+                    val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                    val response = reader.readText()
+                    reader.close()
+                    
+                    val json = JSONObject(response)
+                    val ipInfo = when (index) {
+                        0 -> IPInfo(
+                            ip = json.optString("ip", "-"),
+                            countryCode = json.optString("country_code", "-"),
+                            country = json.optString("country", "-"),
+                            organization = json.optString("organization", ""),
+                            isp = json.optString("isp", "-")
+                        )
+                        1 -> IPInfo(
+                            ip = json.optString("ip", "-"),
+                            countryCode = json.optString("country_code", "-"),
+                            country = json.optString("country_name", "-"),
+                            organization = json.optString("org", ""),
+                            isp = json.optString("isp", "-")
+                        )
+                        2 -> IPInfo(
+                            ip = json.optString("ipAddress", "-"),
+                            countryCode = json.optString("countryCode", "-"),
+                            country = json.optString("countryName", "-"),
+                            organization = json.optString("organizationName", ""),
+                            isp = json.optString("isp", "-")
+                        )
+                        else -> IPInfo(
+                            ip = json.optString("query", "-"),
+                            countryCode = json.optString("countryCode", "-"),
+                            country = json.optString("country", "-"),
+                            organization = json.optString("org", ""),
+                            isp = json.optString("isp", "-")
+                        )
+                    }
+                    
+                    if (ipInfo.ip != "-" && ipInfo.country != "-") {
+                        return@withContext ipInfo
+                    }
+                }
+            } catch (e: Exception) {
+                lastException = e
+                continue
             }
-        } catch (e: Exception) {
-            IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")
         }
+        
+        IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")
     }
 }
 

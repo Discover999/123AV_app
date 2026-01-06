@@ -34,6 +34,27 @@ import java.util.concurrent.atomic.AtomicBoolean
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
+const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36"
+
+fun commonHeaders(): okhttp3.Headers {
+    return okhttp3.Headers.Builder()
+        .add("User-Agent", USER_AGENT)
+        .add("Accept", "*/*")
+        .add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .build()
+}
+
+fun apiHeaders(referer: String = ""): okhttp3.Headers {
+    return okhttp3.Headers.Builder()
+        .add("User-Agent", USER_AGENT)
+        .add("Accept", "application/json, text/plain, */*")
+        .add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .add("Referer", referer)
+        .add("Origin", referer.removeSuffix("/"))
+        .add("X-Requested-With", "XMLHttpRequest")
+        .build()
+}
+
 private val videoUrlCache = object : LinkedHashMap<String, CachedVideoUrl>(50, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedVideoUrl>?): Boolean {
         return size > 50
@@ -178,9 +199,7 @@ private fun fetchVideoUrlSync(videoId: String): String? {
     
     val request = Request.Builder()
         .url(videoDetailUrl)
-        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36")
-        .header("Accept", "*/*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .headers(commonHeaders())
         .build()
     
     return try {
@@ -258,7 +277,7 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            settings.userAgentString = USER_AGENT
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
             
             currentWebView.setLayerType(View.LAYER_TYPE_NONE, null)
@@ -355,12 +374,7 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
         .url(loginUrl)
         .post(requestBody)
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-        .header("Referer", currentBaseUrl + "/")
-        .header("Origin", currentBaseUrl)
-        .header("X-Requested-With", "XMLHttpRequest")
+        .headers(apiHeaders("$currentBaseUrl/"))
         .build()
     
     try {
@@ -397,12 +411,7 @@ suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
     
     val request = Request.Builder()
         .url(userInfoUrl)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-        .header("Referer", currentBaseUrl + "/")
-        .header("Origin", currentBaseUrl)
-        .header("X-Requested-With", "XMLHttpRequest")
+        .headers(apiHeaders("$currentBaseUrl/"))
         .build()
     
     try {
@@ -440,11 +449,9 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
     
     val request = Request.Builder()
         .url(fullUrl)
-        .header("Origin", currentBaseUrl + "/")
-        .header("Referer", currentBaseUrl + "/")
-        .header("User-Agent", "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36")
-        .header("Accept", "*/*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .headers(commonHeaders())
+        .header("Origin", "$currentBaseUrl/")
+        .header("Referer", "$currentBaseUrl/")
         .cacheControl(okhttp3.CacheControl.Builder().maxStale(1, TimeUnit.HOURS).build())
         .build()
 
@@ -479,9 +486,7 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
         
         val request = Request.Builder()
             .url(videoDetailUrl)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36")
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+            .headers(commonHeaders())
             .build()
         
         val response = okHttpClient.newCall(request).execute()
@@ -575,9 +580,7 @@ suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo>
     
     val request = Request.Builder()
         .url(favoritesUrl)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+        .headers(commonHeaders())
         .header("Referer", "$currentBaseUrl/")
         .header("Origin", currentBaseUrl)
         .build()
