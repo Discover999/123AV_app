@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.android123av.app.network.SiteManager
+import com.android123av.app.network.VideoSite
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,22 +63,27 @@ enum class TestStatus {
 fun NetworkTestScreen(
     onNavigateBack: () -> Unit
 ) {
-    val endpoints = listOf(
-        NetworkEndpoint("123AV 主站", "https://123av.com/zh", "视频内容服务器"),
-        NetworkEndpoint("123AV WS", "https://123av.ws", "备用站点1"),
-        NetworkEndpoint("1AV TO", "https://1av.to", "备用站点2")
-    )
-    
     var results by remember { mutableStateOf<List<TestResult>>(emptyList()) }
     var isTesting by remember { mutableStateOf(false) }
     var currentIPInfo by remember { mutableStateOf(IPInfo(ip = "-", countryCode = "-", country = "-", organization = "", isp = "-")) }
     var isRefreshingIP by remember { mutableStateOf(false) }
+    var selectedSite by remember { mutableStateOf<VideoSite?>(null) }
+    var expanded by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    
+    var endpoints by remember { mutableStateOf<List<NetworkEndpoint>>(emptyList()) }
+
     LaunchedEffect(Unit) {
         currentIPInfo = fetchIPInfo()
+        selectedSite = SiteManager.getCurrentSite()
+        endpoints = SiteManager.availableSites.map { site ->
+            NetworkEndpoint(
+                name = site.name,
+                url = "${site.baseUrl}/zh",
+                description = site.description
+            )
+        }
     }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,6 +110,19 @@ fun NetworkTestScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
+            SiteSelectionCard(
+                selectedSite = selectedSite,
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+                onSiteSelected = { site ->
+                    SiteManager.selectSite(site)
+                    selectedSite = site
+                    results = emptyList()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             IPAddressCard(
                 ipInfo = currentIPInfo,
                 isRefreshing = isRefreshingIP,
@@ -124,6 +144,13 @@ fun NetworkTestScreen(
                     if (!isTesting) {
                         isTesting = true
                         results = emptyList()
+                        endpoints = SiteManager.availableSites.map { site ->
+                            NetworkEndpoint(
+                                name = site.name,
+                                url = "${site.baseUrl}/zh",
+                                description = site.description
+                            )
+                        }
                         coroutineScope.launch {
                             testAllEndpoints(endpoints) { result ->
                                 results = results + result
@@ -157,9 +184,7 @@ fun NetworkTestScreen(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            if (results.isNotEmpty()) {
-                TestSummary(results = results)
-            }
+            TestSummary(results = results)
             
             LazyColumn(
                 modifier = Modifier
@@ -296,9 +321,7 @@ private suspend fun fetchIPInfo(): IPInfo {
 
 @Composable
 private fun TestSummary(results: List<TestResult>) {
-    val successCount = results.count { it.status == TestStatus.SUCCESS }
-    val failedCount = results.count { it.status == TestStatus.FAILED || it.status == TestStatus.TIMEOUT }
-    }
+}
 
 
 @Composable
@@ -451,6 +474,102 @@ private suspend fun testAllEndpoints(
     endpoints.forEach { endpoint ->
         val result = testEndpoint(endpoint)
         onResult(result)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SiteSelectionCard(
+    selectedSite: VideoSite?,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSiteSelected: (VideoSite) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = onExpandedChange
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Wifi,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "选择站点",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = selectedSite?.name ?: "加载中...",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { onExpandedChange(false) }
+            ) {
+                SiteManager.availableSites.forEach { site ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = site.name,
+                                    fontWeight = if (site.id == selectedSite?.id) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (site.isDefault) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "(默认)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        },
+                        onClick = {
+                            onSiteSelected(site)
+                            onExpandedChange(false)
+                        },
+                        leadingIcon = {
+                            if (site.id == selectedSite?.id) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                    )
+                }
+            }
+        }
     }
 }
 

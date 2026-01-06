@@ -174,7 +174,7 @@ private fun fetchVideoUrlSync(videoId: String): String? {
         return null
     }
     
-    val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+    val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
     
     val request = Request.Builder()
         .url(videoDetailUrl)
@@ -223,7 +223,7 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
         return@withContext null
     }
     
-    val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+    val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
     val result = CompletableDeferred<String?>()
     
     withContext(Dispatchers.Main) {
@@ -342,7 +342,8 @@ fun getPersistentCookieJar(): PersistentCookieJar? = persistentCookieJar
 val gson = Gson()
 
 suspend fun login(username: String, password: String): LoginResponse = withContext(Dispatchers.IO) {
-    val loginUrl = "https://123av.com/zh/ajax/user/signin"
+    val loginUrl = SiteManager.buildZhUrl("ajax/user/signin")
+    val currentBaseUrl = SiteManager.getCurrentBaseUrl()
     
     val requestBody = FormBody.Builder()
         .add("username", username)
@@ -357,8 +358,8 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-        .header("Referer", "https://123av.com/")
-        .header("Origin", "https://123av.com")
+        .header("Referer", currentBaseUrl + "/")
+        .header("Origin", currentBaseUrl)
         .header("X-Requested-With", "XMLHttpRequest")
         .build()
     
@@ -391,15 +392,16 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
 }
 
 suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
-    val userInfoUrl = "https://123av.com/zh/ajax/user/info"
+    val userInfoUrl = SiteManager.buildZhUrl("ajax/user/info")
+    val currentBaseUrl = SiteManager.getCurrentBaseUrl()
     
     val request = Request.Builder()
         .url(userInfoUrl)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-        .header("Referer", "https://123av.com/")
-        .header("Origin", "https://123av.com")
+        .header("Referer", currentBaseUrl + "/")
+        .header("Origin", currentBaseUrl)
         .header("X-Requested-With", "XMLHttpRequest")
         .build()
     
@@ -434,10 +436,12 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
         url
     }
     
+    val currentBaseUrl = SiteManager.getCurrentBaseUrl()
+    
     val request = Request.Builder()
         .url(fullUrl)
-        .header("Origin", "https://123av.com/")
-        .header("Referer", "https://123av.com/")
+        .header("Origin", currentBaseUrl + "/")
+        .header("Referer", currentBaseUrl + "/")
         .header("User-Agent", "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36")
         .header("Accept", "*/*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -471,7 +475,7 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
             return@withContext null
         }
         
-        val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+        val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
         
         val request = Request.Builder()
             .url(videoDetailUrl)
@@ -560,21 +564,22 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
      if (query.isBlank()) return@withContext emptyList()
      
      val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-     val searchUrl = "https://123av.com/zh/search?keyword=$encodedQuery"
+     val searchUrl = SiteManager.buildZhUrl("search?keyword=$encodedQuery")
      
      fetchVideosData(searchUrl, page)
  }
 
 suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
-    val favoritesUrl = "https://123av.com/zh/user/collection?page=$page"
+    val currentBaseUrl = SiteManager.getCurrentBaseUrl()
+    val favoritesUrl = SiteManager.buildZhUrl("user/collection?page=$page")
     
     val request = Request.Builder()
         .url(favoritesUrl)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-        .header("Referer", "https://123av.com/")
-        .header("Origin", "https://123av.com")
+        .header("Referer", "$currentBaseUrl/")
+        .header("Origin", currentBaseUrl)
         .build()
     
     try {
@@ -669,15 +674,16 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
 
 suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Dispatchers.IO) {
     try {
-        val videoDetailUrl = "https://123av.com/zh/v/$videoId"
+        val currentBaseUrl = SiteManager.getCurrentBaseUrl()
+        val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
         
         val request = Request.Builder()
             .url(videoDetailUrl)
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36")
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("Referer", "https://123av.com/")
-            .header("Origin", "https://123av.com")
+            .header("Referer", "$currentBaseUrl/")
+            .header("Origin", currentBaseUrl)
             .build()
         
         val response = okHttpClient.newCall(request).execute()
