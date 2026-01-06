@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -62,10 +63,8 @@ fun NetworkTestScreen(
 ) {
     val endpoints = listOf(
         NetworkEndpoint("123AV 主站", "https://123av.com/zh", "视频内容服务器"),
-        NetworkEndpoint("CDN 资源", "https://cdn.123av.com", "静态资源 CDN"),
-        NetworkEndpoint("API 接口", "https://123av.com/api", "数据接口"),
-        NetworkEndpoint("视频流", "https://stream.123av.com", "视频流服务器"),
-        NetworkEndpoint("图片资源", "https://img.123av.com", "图片 CDN")
+        NetworkEndpoint("123AV WS", "https://123av.ws", "备用站点1"),
+        NetworkEndpoint("1AV TO", "https://1av.to", "备用站点2")
     )
     
     var results by remember { mutableStateOf<List<TestResult>>(emptyList()) }
@@ -299,68 +298,8 @@ private suspend fun fetchIPInfo(): IPInfo {
 private fun TestSummary(results: List<TestResult>) {
     val successCount = results.count { it.status == TestStatus.SUCCESS }
     val failedCount = results.count { it.status == TestStatus.FAILED || it.status == TestStatus.TIMEOUT }
-    val avgResponseTime = if (results.isNotEmpty()) {
-        results.filter { it.status == TestStatus.SUCCESS }.map { it.responseTime }.average()
-    } else 0.0
-    
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "$successCount",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "成功",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "$failedCount",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
-                )
-                Text(
-                    text = "失败",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "${avgResponseTime.toLong()}ms",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-                Text(
-                    text = "平均延迟",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
-}
+
 
 @Composable
 private fun TestResultCard(
@@ -459,11 +398,16 @@ private fun TestResultCard(
             Column(horizontalAlignment = Alignment.End) {
                 when (result?.status) {
                     TestStatus.SUCCESS -> {
+                        val latencyColor = when {
+                            result.responseTime < 400 -> Color(0xFF4CAF50)
+                            result.responseTime < 800 -> Color(0xFFF0B100)
+                            else -> Color(0xFFEC2A34)
+                        }
                         Text(
                             text = "${result.responseTime}ms",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = latencyColor
                         )
                     }
                     TestStatus.FAILED -> {
