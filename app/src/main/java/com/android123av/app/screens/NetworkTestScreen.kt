@@ -293,8 +293,7 @@ private fun IPAddressCard(
 private val ipInfoApis = listOf(
     "https://api.ip.sb/geoip",
     "https://ipapi.co/json/",
-    "https://freeipapi.com/api/json",
-    "https://ip-api.com/json/"
+    "https://freeipapi.com/api/json"
 )
 
 private suspend fun fetchIPInfo(): IPInfo {

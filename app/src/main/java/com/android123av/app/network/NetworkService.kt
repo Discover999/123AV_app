@@ -25,6 +25,7 @@ import okhttp3.ConnectionPool
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.io.IOException
@@ -430,6 +431,56 @@ suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
         UserInfoResponse(
             status = 500,
             result = null
+        )
+    }
+}
+
+data class EditProfileResponse(
+    val status: Int,
+    val result: Boolean?,
+    val messages: Messages?
+)
+
+suspend fun editUserProfile(username: String, email: String): EditProfileResponse = withContext(Dispatchers.IO) {
+    val editUrl = SiteManager.buildZhUrl("ajax/user/edit")
+    val currentBaseUrl = SiteManager.getCurrentBaseUrl()
+
+    val jsonBody = gson.toJson(mapOf("username" to username, "email" to email))
+    val requestBody = okhttp3.RequestBody.create(
+        "application/json; charset=utf-8".toMediaTypeOrNull(),
+        jsonBody
+    )
+
+    val request = Request.Builder()
+        .url(editUrl)
+        .post(requestBody)
+        .headers(apiHeaders("$currentBaseUrl/"))
+        .build()
+    
+    try {
+        val response = okHttpClient.newCall(request).execute()
+        if (response.isSuccessful) {
+            val responseBody = response.body?.string() ?: ""
+            gson.fromJson(responseBody, EditProfileResponse::class.java)
+        } else {
+            EditProfileResponse(
+                status = response.code,
+                result = null,
+                messages = Messages(
+                    all = listOf("修改失败: ${response.code}"),
+                    keyed = listOf("修改失败: ${response.code}")
+                )
+            )
+        }
+    } catch (e: IOException) {
+        e.printStackTrace()
+        EditProfileResponse(
+            status = 500,
+            result = null,
+            messages = Messages(
+                all = listOf("网络错误: ${e.message}"),
+                keyed = listOf("网络错误: ${e.message}")
+            )
         )
     }
 }

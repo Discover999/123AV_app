@@ -4,13 +4,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.net.Uri
-
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,9 +21,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.android123av.app.network.editUserProfile
 import com.android123av.app.state.UserStateManager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileHeader(
@@ -208,6 +217,7 @@ fun ProfileScreen(
     var showAboutDialog by remember { mutableStateOf(false) }
     var showOptionsDialog by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
@@ -260,13 +270,6 @@ fun ProfileScreen(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                        
-                        MenuItem(
-                            icon = Icons.Default.Favorite,
-                            title = "我的收藏",
-                            subtitle = "收藏的视频",
-                            onClick = { }
                         )
                         
                         MenuItem(
@@ -331,7 +334,7 @@ fun ProfileScreen(
             onDismiss = { showOptionsDialog = false },
             onEditProfile = {
                 showOptionsDialog = false
-                onNavigateToSettings()
+                showEditProfileDialog = true
             },
             onLogout = {
                 showOptionsDialog = false
@@ -347,6 +350,13 @@ fun ProfileScreen(
                 onLogout()
             },
             onDismiss = { showLogoutConfirmDialog = false }
+        )
+    }
+
+    if (showEditProfileDialog) {
+        EditProfileDialog(
+            onDismiss = { showEditProfileDialog = false },
+            onSuccess = { }
         )
     }
 }
@@ -548,6 +558,168 @@ fun ProfileOptionsDialog(
         when (action) {
             "edit" -> onEditProfile()
             "logout" -> onLogout()
+        }
+    }
+}
+
+@Composable
+fun EditProfileDialog(
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var username by remember { mutableStateOf(UserStateManager.userName) }
+    var email by remember { mutableStateOf(UserStateManager.userEmail) }
+    var password by remember { mutableStateOf("") }
+    var showPasswordField by remember { mutableStateOf(false) }
+
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+
+    Dialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        properties = DialogProperties(dismissOnBackPress = !isLoading, dismissOnClickOutside = !isLoading)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = MaterialTheme.shapes.large
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Text(
+                    text = "编辑资料",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("用户名") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isLoading
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("电子邮箱") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    enabled = !isLoading
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TextButton(
+                    onClick = { showPasswordField = !showPasswordField },
+                    enabled = !isLoading
+                ) {
+                    Icon(
+                        imageVector = if (showPasswordField) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("修改密码")
+                }
+
+                if (showPasswordField) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("新密码") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = !isLoading
+                    )
+                }
+
+                errorMessage?.let {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                successMessage?.let {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = {
+                        if (username.isBlank() || email.isBlank()) {
+                            errorMessage = "用户名和邮箱不能为空"
+                            return@Button
+                        }
+                        isLoading = true
+                        errorMessage = null
+                        successMessage = null
+                        coroutineScope.launch {
+                            val response = editUserProfile(username, email)
+                            isLoading = false
+                            if (response.status == 200 && response.result == true) {
+                                UserStateManager.userName = username
+                                UserStateManager.userEmail = email
+                                successMessage = "修改成功"
+                                kotlinx.coroutines.delay(1000)
+                                onSuccess()
+                                onDismiss()
+                            } else {
+                                errorMessage = response.messages?.all?.firstOrNull() ?: "修改失败"
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading && username.isNotBlank() && email.isNotBlank()
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text("确认修改")
+                }
+
+                if (!isLoading) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("取消")
+                    }
+                }
+            }
         }
     }
 }
