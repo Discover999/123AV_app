@@ -1,6 +1,5 @@
 package com.android123av.app
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,7 +14,6 @@ import com.android123av.app.models.Video
 import com.android123av.app.screens.VideoPlayerScreen
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
-import java.io.File
 
 private fun ComponentActivity.updateStatusBarColor() {
     val isLightTheme = !ThemeStateManager.isDarkTheme()

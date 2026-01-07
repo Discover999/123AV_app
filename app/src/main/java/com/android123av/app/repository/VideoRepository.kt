@@ -4,7 +4,6 @@ import android.content.Context
 import com.android123av.app.models.Video
 import com.android123av.app.models.VideoDetails
 import com.android123av.app.network.fetchM3u8UrlWithWebView
-import com.android123av.app.network.fetchVideoDetails
 import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchVideoUrlParallel
 

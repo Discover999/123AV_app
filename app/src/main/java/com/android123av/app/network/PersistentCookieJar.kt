@@ -6,7 +6,6 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import java.io.IOException
 
 /**
  * 持久化CookieJar实现，将cookies存储在SharedPreferences中

@@ -22,14 +22,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Cache
 import okhttp3.ConnectionPool
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import org.jsoup.Jsoup

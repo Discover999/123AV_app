@@ -2,7 +2,6 @@ package com.android123av.app.network
 
 import com.android123av.app.models.VideoDetails
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
 
 fun parseVideoDetails(html: String): VideoDetails? {
     return try {

@@ -6,7 +6,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.android123av.app.models.PlayerState
 import com.android123av.app.models.Video
-import com.android123av.app.models.VideoDetails
 import com.android123av.app.player.ExoPlayerManager
 import com.android123av.app.repository.VideoRepository
 import kotlinx.coroutines.Job

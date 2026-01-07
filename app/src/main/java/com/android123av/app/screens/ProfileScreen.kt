@@ -25,13 +25,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.android123av.app.network.editUserProfile
 import com.android123av.app.state.UserStateManager
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
