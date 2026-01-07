@@ -518,7 +518,10 @@ fun VideoPlayerScreen(
                                 onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
                                 onFullscreen = { isFullscreen = !isFullscreen },
                                 onLock = { isLocked = !isLocked },
-                                onSpeedChange = { currentSpeedIndex = it },
+                                onSpeedChange = { index ->
+                                    currentSpeedIndex = index
+                                    exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+                                },
                                 onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
                                 onPlayPause = {
                                     exoPlayer?.let { player ->
@@ -596,7 +599,10 @@ fun VideoPlayerScreen(
                                         onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
                                         onFullscreen = { isFullscreen = !isFullscreen },
                                         onLock = { isLocked = !isLocked },
-                                        onSpeedChange = { currentSpeedIndex = it },
+                                        onSpeedChange = { index ->
+                                            currentSpeedIndex = index
+                                            exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+                                        },
                                         onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
                                         onPlayPause = {
                                             exoPlayer?.let { player ->
@@ -698,7 +704,10 @@ fun VideoPlayerScreen(
                                         onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
                                         onFullscreen = { isFullscreen = !isFullscreen },
                                         onLock = { isLocked = !isLocked },
-                                        onSpeedChange = { currentSpeedIndex = it },
+                                        onSpeedChange = { index ->
+                                            currentSpeedIndex = index
+                                            exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+                                        },
                                         onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
                                         onPlayPause = {
                                             exoPlayer?.let { player ->
@@ -1145,7 +1154,11 @@ private fun VideoPlayerOverlay(
                     onFullscreen = onFullscreen,
                     onLock = onLock,
                     onResizeModeChange = onResizeModeChange,
-                    resizeMode = resizeMode
+                    resizeMode = resizeMode,
+                    currentSpeedIndex = currentSpeedIndex,
+                    showSpeedSelector = showSpeedSelector,
+                    onSpeedSelectorToggle = onSpeedSelectorToggle,
+                    onSpeedChange = onSpeedChange
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -1165,13 +1178,9 @@ private fun VideoPlayerOverlay(
                     currentPosition = currentPosition,
                     duration = duration,
                     progress = progress,
-                    showSpeedSelector = showSpeedSelector,
-                    currentSpeedIndex = currentSpeedIndex,
                     onSeek = onSeek,
                     onSeekStart = onSeekStart,
-                    onSeekStop = onSeekStop,
-                    onSpeedSelectorToggle = onSpeedSelectorToggle,
-                    onSpeedChange = onSpeedChange
+                    onSeekStop = onSeekStop
                 )
             }
         }
@@ -1236,7 +1245,11 @@ private fun TopBar(
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onResizeModeChange: () -> Unit,
-    resizeMode: Int
+    resizeMode: Int,
+    currentSpeedIndex: Int = 2,
+    showSpeedSelector: Boolean = false,
+    onSpeedSelectorToggle: () -> Unit = {},
+    onSpeedChange: (Int) -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -1286,6 +1299,13 @@ private fun TopBar(
                 }
             }
 
+            SpeedButton(
+                currentSpeedIndex = currentSpeedIndex,
+                showSpeedSelector = showSpeedSelector,
+                onSpeedSelectorToggle = onSpeedSelectorToggle,
+                onSpeedChange = onSpeedChange
+            )
+
             Surface(
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = 0.35f),
@@ -1315,6 +1335,90 @@ private fun TopBar(
                     modifier = Modifier
                         .padding(10.dp)
                         .size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedButton(
+    currentSpeedIndex: Int,
+    showSpeedSelector: Boolean,
+    onSpeedSelectorToggle: () -> Unit,
+    onSpeedChange: (Int) -> Unit
+) {
+    Box {
+        Surface(
+            shape = CircleShape,
+            color = Color.Black.copy(alpha = 0.35f),
+            contentColor = Color.White,
+            tonalElevation = 2.dp,
+            onClick = onSpeedSelectorToggle
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = playbackSpeeds[currentSpeedIndex].label,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+                Icon(
+                    imageVector = if (showSpeedSelector) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = "播放速度",
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = showSpeedSelector,
+            onDismissRequest = onSpeedSelectorToggle,
+            offset = androidx.compose.ui.unit.DpOffset(x = (-8).dp, y = 4.dp),
+            containerColor = Color.Black.copy(alpha = 0.65f),
+        ) {
+            playbackSpeeds.forEachIndexed { index, speed ->
+                val isSelected = currentSpeedIndex == index
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = speed.label,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    Color.White.copy(alpha = 0.9f)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        onSpeedChange(index)
+                        onSpeedSelectorToggle()
+                    },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    colors = MenuDefaults.itemColors(
+                        textColor = Color.White.copy(alpha = 0.9f),
+                        trailingIconColor = Color(0xFFFF6B6B)
+                    )
                 )
             }
         }
@@ -1407,15 +1511,10 @@ private fun BottomBar(
     currentPosition: Long,
     duration: Long,
     progress: Float,
-    showSpeedSelector: Boolean,
-    currentSpeedIndex: Int,
     onSeek: (Float) -> Unit,
     onSeekStart: () -> Unit,
-    onSeekStop: () -> Unit,
-    onSpeedSelectorToggle: () -> Unit,
-    onSpeedChange: (Int) -> Unit
+    onSeekStop: () -> Unit
 ) {
-    // 进度条预览相关状态
     var showPreview by remember { mutableStateOf(false) }
     var previewPosition by remember { mutableStateOf(0L) }
     var previewProgress by remember { mutableStateOf(0f) }
@@ -1425,40 +1524,19 @@ private fun BottomBar(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // 将倍速选择放在进度条上方并居中显示
-        AnimatedVisibility(
-            visible = showSpeedSelector,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            SpeedSelector(
-                currentIndex = currentSpeedIndex,
-                onSpeedSelect = { index ->
-                    onSpeedChange(index)
-                    onSpeedSelectorToggle()
-                },
-                modifier = Modifier
-                    .padding(bottom = 12.dp)
-                    .wrapContentWidth()
+            Text(
+                text = formatTime(currentPosition),
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
             )
-        }
-
-        // 时间和进度条区域
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = formatTime(currentPosition),
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -1586,43 +1664,9 @@ private fun BottomBar(
                     fontWeight = FontWeight.Medium
                 )
             }
-
-            // 播放速度选择按钮（居中）
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color.Black.copy(alpha = 0.4f),
-                    contentColor = Color.White,
-                    onClick = onSpeedSelectorToggle
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = playbackSpeeds[currentSpeedIndex].label,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Icon(
-                            imageVector = if (showSpeedSelector) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = "播放速度",
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
         }
     }
-}
+
 
 @Composable
 private fun ProgressBar(
@@ -1643,64 +1687,6 @@ private fun ProgressBar(
             inactiveTrackColor = Color.White.copy(alpha = 0.3f)
         )
     )
-}
-
-@Composable
-private fun SpeedSelector(
-    currentIndex: Int,
-    onSpeedSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Black.copy(alpha = 0.6f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp)
-        ) {
-            items(playbackSpeeds.size) { index ->
-                val speed = playbackSpeeds[index]
-                val isSelected = currentIndex == index
-                
-                Surface(
-                    modifier = Modifier
-                        .height(40.dp)
-                        .animateContentSize(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        Color.White.copy(alpha = 0.1f)
-                    },
-                    contentColor = if (isSelected) Color.White else Color.White.copy(alpha = 0.8f),
-                    border = if (isSelected) null else BorderStroke(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.3f)
-                    ),
-                    onClick = { onSpeedSelect(index) }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = speed.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
