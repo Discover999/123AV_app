@@ -22,7 +22,7 @@ class VideoPlayerViewModel(
     private val video: Video
 ) : AndroidViewModel(application) {
     
-    private val repository = VideoRepository()
+    private val repository = VideoRepository(application)
     private val playerManager = ExoPlayerManager(application.applicationContext)
     
     private val _uiState = MutableStateFlow(PlayerState())

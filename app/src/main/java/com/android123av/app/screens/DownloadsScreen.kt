@@ -665,9 +665,11 @@ private fun openDownloadedVideo(context: android.content.Context, task: Download
     try {
         val videoFile = File(task.savePath, "video.mp4")
         if (videoFile.exists()) {
+            android.util.Log.d("DownloadsScreen", "打开已下载视频: task.videoId=${task.videoId}, path=${videoFile.absolutePath}")
             val intent = Intent(context, VideoPlayerActivity::class.java).apply {
                 putExtra("localVideoPath", videoFile.absolutePath)
                 putExtra("videoTitle", task.title)
+                putExtra("videoId", task.videoId)
             }
             context.startActivity(intent)
         } else {

@@ -51,9 +51,31 @@ interface DownloadTaskDao {
     suspend fun getTaskCountByStatus(status: DownloadStatus): Int
 }
 
-@Database(entities = [DownloadTask::class], version = 2, exportSchema = false)
+@Dao
+interface CachedVideoDetailsDao {
+    @Query("SELECT * FROM cached_video_details WHERE videoId = :videoId LIMIT 1")
+    suspend fun getVideoDetails(videoId: String): CachedVideoDetails?
+    
+    @Query("SELECT * FROM cached_video_details WHERE videoId = :videoId")
+    fun observeVideoDetails(videoId: String): Flow<CachedVideoDetails?>
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVideoDetails(details: CachedVideoDetails)
+    
+    @Query("DELETE FROM cached_video_details WHERE videoId = :videoId")
+    suspend fun deleteVideoDetails(videoId: String)
+    
+    @Query("DELETE FROM cached_video_details WHERE cachedAt < :timestamp")
+    suspend fun deleteOldCache(timestamp: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM cached_video_details")
+    suspend fun getCacheCount(): Int
+}
+
+@Database(entities = [DownloadTask::class, CachedVideoDetails::class], version = 3, exportSchema = false)
 abstract class DownloadDatabase : RoomDatabase() {
     abstract fun downloadTaskDao(): DownloadTaskDao
+    abstract fun cachedVideoDetailsDao(): CachedVideoDetailsDao
 
     companion object {
         @Volatile
@@ -72,6 +94,25 @@ abstract class DownloadDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS cached_video_details (
+                        videoId TEXT PRIMARY KEY NOT NULL,
+                        code TEXT NOT NULL,
+                        releaseDate TEXT NOT NULL,
+                        duration TEXT NOT NULL,
+                        performer TEXT NOT NULL,
+                        genres TEXT NOT NULL,
+                        maker TEXT NOT NULL,
+                        tags TEXT NOT NULL,
+                        favouriteCount INTEGER DEFAULT 0,
+                        cachedAt INTEGER DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getInstance(context: Context): DownloadDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -79,7 +120,7 @@ abstract class DownloadDatabase : RoomDatabase() {
                     DownloadDatabase::class.java,
                     "download_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

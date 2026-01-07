@@ -1,6 +1,7 @@
 package com.android123av.app
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -32,6 +33,9 @@ class VideoPlayerActivity : ComponentActivity() {
         
         val video = intent.getParcelableExtra<Video>("video")
         val localVideoPath = intent.getStringExtra("localVideoPath")
+        val videoId = intent.getStringExtra("videoId")
+        
+        Log.d("VideoPlayerActivity", "onCreate: videoId=$videoId, localVideoPath=$localVideoPath")
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
@@ -46,6 +50,7 @@ class VideoPlayerActivity : ComponentActivity() {
                         modifier = Modifier.padding(it),
                         video = video,
                         localVideoPath = localVideoPath,
+                        localVideoId = videoId,
                         onBack = {
                             finish()
                         }

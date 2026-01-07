@@ -71,6 +71,7 @@ import com.android123av.app.DownloadsActivity
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
+import com.android123av.app.download.VideoDetailsCacheManager
 import com.android123av.app.state.DownloadPathManager
 import kotlinx.coroutines.async
 
@@ -95,6 +96,7 @@ fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
     video: Video? = null,
     localVideoPath: String? = null,
+    localVideoId: String? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -107,6 +109,7 @@ fun VideoPlayerScreen(
     var isLoading by remember { mutableStateOf(true) }
     var videoUrl by remember { mutableStateOf<String?>(null) }
     var videoDetails by remember { mutableStateOf<VideoDetails?>(null) }
+    var cachedTitle by remember { mutableStateOf<String?>(null) }
     var isLoadingDetails by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -289,6 +292,23 @@ fun VideoPlayerScreen(
             if (file.exists()) {
                 videoUrl = localVideoPath
                 isLoading = false
+                
+                if (!localVideoId.isNullOrBlank()) {
+                    coroutineScope.launch {
+                        try {
+                            val cachedDetails = VideoDetailsCacheManager.getVideoDetails(context, localVideoId)
+                            if (cachedDetails != null) {
+                                videoDetails = cachedDetails
+                                cachedTitle = VideoDetailsCacheManager.getCachedTitle(context, localVideoId)
+                                Log.d("VideoPlayer", "✅ 从缓存加载视频详情成功: ${cachedDetails.code}")
+                            } else {
+                                Log.d("VideoPlayer", "⚠️ 未找到视频详情缓存, videoId: $localVideoId")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("VideoPlayer", "❌ 加载缓存视频详情失败: ${e.message}")
+                        }
+                    }
+                }
             } else {
                 errorMessage = "视频文件不存在"
                 isLoading = false
@@ -628,7 +648,7 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                if (videoDetails != null && video != null) {
+                                if (videoDetails != null) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -636,8 +656,16 @@ fun VideoPlayerScreen(
                                             .verticalScroll(rememberScrollState())
                                     ) {
                                         VideoInfoSection(
-                                            video = video!!,
+                                            video = video ?: Video(
+                                                 id = localVideoId ?: "",
+                                                 title = cachedTitle ?: "",
+                                                 duration = "",
+                                                 thumbnailUrl = null,
+                                                 videoUrl = null,
+                                                 details = null
+                                             ),
                                             videoDetails = videoDetails!!,
+                                            cachedTitle = cachedTitle,
                                             existingDownloadTask = existingDownloadTask,
                                             downloadProgress = downloadProgress,
                                             videoUrl = videoUrl,
@@ -733,10 +761,18 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                if (videoDetails != null && video != null) {
+                                if (videoDetails != null) {
                                     VideoInfoSection(
-                                        video = video!!,
+                                        video = video ?: Video(
+                                            id = localVideoId ?: "",
+                                            title = cachedTitle ?: "",
+                                            duration = "",
+                                            thumbnailUrl = null,
+                                            videoUrl = null,
+                                            details = null
+                                        ),
                                         videoDetails = videoDetails!!,
+                                        cachedTitle = cachedTitle,
                                         existingDownloadTask = existingDownloadTask,
                                         downloadProgress = downloadProgress,
                                         videoUrl = videoUrl,
@@ -1866,6 +1902,7 @@ private fun IdleIndicator() {
 private fun VideoInfoSection(
     video: Video,
     videoDetails: VideoDetails,
+    cachedTitle: String?,
     existingDownloadTask: DownloadTask?,
     downloadProgress: Int,
     videoUrl: String?,
@@ -1878,6 +1915,7 @@ private fun VideoInfoSection(
     modifier: Modifier = Modifier
 ) {
     var isTitleExpanded by remember { mutableStateOf(false) }
+    val effectiveTitle = cachedTitle ?: video.title
     val downloadStatus = existingDownloadTask?.status
     val isDownloadActive = downloadStatus == DownloadStatus.DOWNLOADING
 
@@ -1890,7 +1928,7 @@ private fun VideoInfoSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = video.title,
+                text = effectiveTitle,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -1898,7 +1936,7 @@ private fun VideoInfoSection(
                 overflow = TextOverflow.Ellipsis
             )
 
-            if (video.title.length > 50) {
+            if (effectiveTitle.length > 50) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -2520,6 +2558,8 @@ private fun handleDownload(
                     val taskId = downloadManager.insertTask(task)
                     onTaskCreated(taskId)
                     onDownloading(true, 0)
+                    
+                    VideoDetailsCacheManager.cacheVideoDetails(context, video.id, video.title)
                     
                     downloadManager.startDownload(taskId)
                     Toast.makeText(context, "开始下载...", Toast.LENGTH_SHORT).show()
