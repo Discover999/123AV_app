@@ -56,6 +56,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import java.io.File
 import com.android123av.app.models.Video
 import com.android123av.app.models.VideoDetails
@@ -190,6 +191,16 @@ fun VideoPlayerScreen(
                     showControls = false
                 }
             }
+        }
+    }
+
+    fun toggleControls() {
+        updateInteractionTime()
+        showControls = !showControls
+        if (showControls) {
+            scheduleHideControls()
+        } else {
+            hideControlsJob.value?.cancel()
         }
     }
 
@@ -522,7 +533,7 @@ fun VideoPlayerScreen(
                                 onHideControls = { showControls = false },
                                 onUpdateInteractionTime = { updateInteractionTime() },
                                 onHideControlsNow = { hideControls() },
-                                onShowControlsTemporarily = { showControlsTemporarily() },
+                                onShowControlsTemporarily = { toggleControls() },
                                 onResizeModeChange = {
                                     Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
                                     resizeMode = when (resizeMode) {
@@ -600,7 +611,7 @@ fun VideoPlayerScreen(
                                         onHideControls = { showControls = false },
                                         onUpdateInteractionTime = { updateInteractionTime() },
                                         onHideControlsNow = { hideControls() },
-                                        onShowControlsTemporarily = { showControlsTemporarily() },
+                                        onShowControlsTemporarily = { toggleControls() },
                                         onResizeModeChange = {
                                             Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
                                             resizeMode = when (resizeMode) {
@@ -702,7 +713,7 @@ fun VideoPlayerScreen(
                                         onHideControls = { showControls = false },
                                         onUpdateInteractionTime = { updateInteractionTime() },
                                         onHideControlsNow = { hideControls() },
-                                        onShowControlsTemporarily = { showControlsTemporarily() },
+                                        onShowControlsTemporarily = { toggleControls() },
                                         onResizeModeChange = {
                                             Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
                                             resizeMode = when (resizeMode) {
@@ -1004,6 +1015,10 @@ private fun PlayerControls(
                         onSeekStart = { isSeeking = true },
                         onSeekStop = { isSeeking = false },
                         onTap = onShowControlsTemporarily,
+                        onDoubleTap = onPlayPause,
+                        onLongPress = { isPressed ->
+                            exoPlayer?.setPlaybackSpeed(if (isPressed) 2.0f else 1.0f)
+                        },
                         onHideControls = onHideControlsNow,
                         onUpdateInteractionTime = onUpdateInteractionTime,
                         onResizeModeChange = onResizeModeChange,
@@ -1040,40 +1055,78 @@ private fun VideoPlayerOverlay(
     onSeekStart: () -> Unit,
     onSeekStop: () -> Unit,
     onTap: () -> Unit,
+    onDoubleTap: () -> Unit,
+    onLongPress: (Boolean) -> Unit,
     onHideControls: () -> Unit,
     onUpdateInteractionTime: () -> Unit,
     onResizeModeChange: () -> Unit,
     resizeMode: Int
 ) {
-    val scope = rememberCoroutineScope()
-    var doubleTapSide by remember { mutableStateOf(0) } // 0 none, 1 left, 2 right
-    var doubleTapVisible by remember { mutableStateOf(false) }
+    var isLongPressed by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         TapGestureLayer(
             showControls = showControls,
             onTap = onTap,
-            onDoubleTapLeft = {
+            onDoubleTap = {
                 onUpdateInteractionTime()
-                onSeekBackward()
-                doubleTapSide = 1
-                doubleTapVisible = true
-                scope.launch {
-                    delay(600)
-                    doubleTapVisible = false
-                }
+                onDoubleTap()
             },
-            onDoubleTapRight = {
-                onUpdateInteractionTime()
-                onSeekForward()
-                doubleTapSide = 2
-                doubleTapVisible = true
-                scope.launch {
-                    delay(600)
-                    doubleTapVisible = false
-                }
+            onLongPress = { isPressed ->
+                isLongPressed = isPressed
+                onLongPress(isPressed)
             }
         )
+
+        // 长按快进提示 - 顶部小胶囊样式
+        AnimatedVisibility(
+            visible = isLongPressed,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 20.dp),
+            enter = fadeIn(animationSpec = tween(200)) + expandVertically(
+                expandFrom = Alignment.Top,
+                animationSpec = tween(200)
+            ) + slideInHorizontally(initialOffsetX = { it / 2 }),
+            exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(
+                shrinkTowards = Alignment.Top,
+                animationSpec = tween(150)
+            ) + slideOutHorizontally(targetOffsetX = { it / 2 })
+        ) {
+            Surface(
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = Color.Black.copy(alpha = 0.75f),
+                tonalElevation = 4.dp,
+                shadowElevation = 8.dp
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "2X",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Icon(
+                            imageVector = Icons.Default.FastForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
+        }
 
         // 控件可见性动画：使用更现代的淡入淡出和轻微缩放
         AnimatedVisibility(
@@ -1122,29 +1175,6 @@ private fun VideoPlayerOverlay(
                 )
             }
         }
-
-        // 双击反馈图标
-        if (doubleTapVisible) {
-            val icon = if (doubleTapSide == 1) Icons.Default.Replay10 else Icons.Default.Forward10
-            val alignment = if (doubleTapSide == 1) Alignment.CenterStart else Alignment.CenterEnd
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = alignment) {
-                Box(
-                    modifier = Modifier
-                        .padding(48.dp)
-                        .size(92.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(44.dp)
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1152,18 +1182,46 @@ private fun VideoPlayerOverlay(
 private fun TapGestureLayer(
     showControls: Boolean,
     onTap: () -> Unit,
-    onDoubleTapLeft: () -> Unit,
-    onDoubleTapRight: () -> Unit
+    onDoubleTap: () -> Unit,
+    onLongPress: (Boolean) -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    var isLongPressHandled by remember { mutableStateOf(false) }
+    var wasLongPressActive by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onTap() },
-                    onDoubleTap = { offset ->
-                        val isRightSide = offset.x > size.width / 2
-                        if (isRightSide) onDoubleTapRight() else onDoubleTapLeft()
+                    onTap = {
+                        if (!isLongPressHandled) {
+                            onTap()
+                        }
+                        isLongPressHandled = false
+                    },
+                    onDoubleTap = {
+                        isLongPressHandled = false
+                        onDoubleTap()
+                    },
+                    onPress = {
+                        isLongPressHandled = false
+                        wasLongPressActive = false
+                        val longPressJob = scope.launch {
+                            delay(500)
+                            isLongPressHandled = true
+                            wasLongPressActive = true
+                            onLongPress(true)
+                        }
+                        try {
+                            awaitRelease()
+                        } finally {
+                            longPressJob.cancel()
+                            if (wasLongPressActive) {
+                                wasLongPressActive = false
+                                onLongPress(false)
+                            }
+                        }
                     }
                 )
             }

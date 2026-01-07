@@ -573,6 +573,7 @@ fun EditProfileDialog(
     var username by remember { mutableStateOf(UserStateManager.userName) }
     var email by remember { mutableStateOf(UserStateManager.userEmail) }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var showPasswordField by remember { mutableStateOf(false) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -604,7 +605,7 @@ fun EditProfileDialog(
 
                 OutlinedTextField(
                     value = username,
-                    onValueChange = { username = it },
+                    onValueChange = { if (it.length <= 20) username = it },
                     label = { Text("用户名") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -615,7 +616,7 @@ fun EditProfileDialog(
 
                 OutlinedTextField(
                     value = email,
-                    onValueChange = { email = it },
+                    onValueChange = { if (it.length <= 30) email = it },
                     label = { Text("电子邮箱") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -642,8 +643,20 @@ fun EditProfileDialog(
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = { if (it.length <= 30) password = it },
                         label = { Text("新密码") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = !isLoading
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { if (it.length <= 30) confirmPassword = it },
+                        label = { Text("再次输入新密码") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -678,6 +691,16 @@ fun EditProfileDialog(
                             errorMessage = "用户名和邮箱不能为空"
                             return@Button
                         }
+                        if (showPasswordField) {
+                            if (password.isBlank()) {
+                                errorMessage = "请输入新密码"
+                                return@Button
+                            }
+                            if (password != confirmPassword) {
+                                errorMessage = "两次输入的密码不一致"
+                                return@Button
+                            }
+                        }
                         isLoading = true
                         errorMessage = null
                         successMessage = null
@@ -697,7 +720,7 @@ fun EditProfileDialog(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading && username.isNotBlank() && email.isNotBlank()
+                    enabled = !isLoading && username.isNotBlank() && email.isNotBlank() && (!showPasswordField || (password.isNotBlank() && password == confirmPassword))
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
