@@ -1,108 +1,158 @@
-# 123AV Android 应用
+# 🎬 123AV Android Application
 
 <div align="center">
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-blue.svg)](https://kotlinlang.org)
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2024.02.00-yellow.svg)](https://developer.android.com/jetpack/compose)
-[![Android SDK](https://img.shields.io/badge/Android%20SDK-34-green.svg)](https://developer.android.com/studio)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-7F52FF?logo=kotlin)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2024.02.00-FF6B6B?logo=jetpackcompose)
+![Android SDK](https://img.shields.io/badge/Android%20SDK-34-3DDC84?logo=android)
+![License](https://img.shields.io/badge/License-MIT-FFFFFF)
 
 </div>
 
-基于 Android 平台的视频聚合应用，提供视频浏览、播放、搜索和个人中心功能。采用纯 Kotlin + Jetpack Compose 现代 Android 开发技术栈。
+<div align="center">
 
-## 目录
+### ✨ 123AV 的非官方 Android 视频聚合平台
 
-- [功能特性](#功能特性)
-- [技术架构](#技术架构)
-- [项目结构](#项目结构)
-- [环境配置](#环境配置)
-- [快速开始](#快速开始)
-- [数据来源](#数据来源)
-- [许可证](#许可证)
+基于 **Kotlin** 与 **Jetpack Compose** 构建的现代化视频应用，集视频浏览、高清播放、智能搜索与个性化管理于一体
 
-## 功能特性
+[🚀 快速开始](#快速开始) • [📱 功能特性](#功能特性) • [🏗️ 技术架构](#技术架构) • [📁 项目结构](#项目结构)
 
-### 核心模块
+</div>
 
-| 模块 | 功能描述 |
-|------|----------|
-| **首页** | 推荐视频展示，支持分类切换和下拉刷新 |
-| **搜索** | 关键词搜索视频内容 |
-| **收藏** | 用户登录后管理个人收藏视频，支持分页加载 |
-| **个人中心** | 用户信息展示、登录状态管理 |
+---
 
-### 技术亮点
+## 📋 目录
 
-- **视频播放**：在线视频播放，独立播放器界面
-- **分页加载**：无限滚动分页，优化大数据量加载性能
-- **状态持久化**：用户登录状态本地管理
-- **响应式 UI**：Material Design 3 设计规范
+```
+├── 功能特性
+├── 技术架构
+├── 项目结构
+├── 环境配置
+├── 快速开始
+├── 数据来源
+└── 许可证
+```
 
-## 技术架构
+---
 
-### 技术栈
+## ✨ 功能特性
 
-| 类别 | 技术选型 |
-|------|----------|
-| 开发语言 | Kotlin |
-| UI 框架 | Jetpack Compose |
-| 状态管理 | MutableState + StateFlow |
-| 网络请求 | OkHttp + Retrofit |
-| HTML 解析 | Jsoup |
-| 异步处理 | Coroutines |
-| 最低 SDK | 24 (Android 7.0) |
-| 目标 SDK | 34 (Android 14) |
+### 🎯 核心功能模块
 
-### 项目结构
+| 模块 | 功能描述 | 技术实现 |
+|------|----------|----------|
+| **🏠 首页** | 推荐视频智能展示，支持多分类切换与下拉刷新 | Compose LazyColumn + SwipeRefresh |
+| **🔍 搜索** | 关键词智能检索视频内容 | Retrofit + Jsoup 解析 |
+| **❤️ 收藏** | 用户登录后管理个人收藏视频，支持无限滚动加载 | StateFlow + Pagination |
+| **👤 个人中心** | 用户信息展示、登录状态安全管理 | Secure State Persistence |
+
+### 🚀 技术亮点
+
+- **🎬 专业视频播放**：独立播放器界面，支持多种视频格式
+- **📄 智能分页加载**：无限滚动分页，优雅处理大数据量场景
+- **💾 状态持久化**：用户登录状态安全本地管理
+- **🎨 响应式 UI**：严格遵循 Material Design 3 设计规范
+- **🌐 网络优化**：OkHttp + Retrofit 高性能网络请求
+- **🔄 异步处理**：Kotlin Coroutines 协程异步编程
+
+---
+
+## 🏗️ 技术架构
+
+### 📦 核心技术栈
+
+| 类别 | 技术选型 | 版本要求 |
+|------|----------|----------|
+| **开发语言** | Kotlin | 1.9.22 |
+| **UI 框架** | Jetpack Compose | 2024.02.00 |
+| **状态管理** | MutableState + StateFlow | - |
+| **网络请求** | OkHttp + Retrofit | 4.12.0 |
+| **HTML 解析** | Jsoup | 1.17.2 |
+| **异步处理** | Kotlin Coroutines | 1.7.3 |
+| **最低 SDK** | Android | 7.0 (API 24) |
+| **目标 SDK** | Android | 14 (API 34) |
+
+### 🏛️ 分层架构设计
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      UI Layer                           │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐      │
+│  │  Home   │ │ Search  │ │Favorites│ │ Profile │      │
+│  │ Screen  │ │ Screen  │ │ Screen  │ │ Screen  │      │
+│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘      │
+│       └───────────┴───────────┴───────────┘           │
+│                      Navigation                        │
+├─────────────────────────────────────────────────────────┤
+│                   State Management                      │
+│              UserStateManager + StateFlow               │
+├─────────────────────────────────────────────────────────┤
+│                   Data Layer                           │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      │
+│  │   Network   │ │    Models   │ │   Download  │      │
+│  │   Service   │ │             │ │   Manager   │      │
+│  └─────────────┘ └─────────────┘ └─────────────┘      │
+├─────────────────────────────────────────────────────────┤
+│                   Network Layer                        │
+│          OkHttp + Retrofit + Jsoup + Gson              │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📁 项目结构
 
 ```
 app/src/main/java/com/android123av/app/
-├── components/              # 可复用 UI 组件
-│   ├── VideoItem.kt         # 视频列表项
-│   ├── PaginationComponent.kt  # 分页组件
-│   └── LoadingSkeleton.kt   # 加载骨架屏
-├── models/                  # 数据模型
-│   └── Video.kt             # 视频数据模型
-├── network/                 # 网络层
-│   ├── NetworkService.kt    # 网络请求服务
-│   └── ApiEndpoints.kt      # API 接口定义
-├── screens/                 # 页面组件
-│   ├── HomeScreen.kt        # 首页
-│   ├── FavoritesScreen.kt   # 收藏页面
-│   ├── ProfileScreen.kt     # 个人中心
-│   └── SearchScreen.kt      # 搜索页面
-├── state/                   # 状态管理
-│   └── UserStateManager.kt  # 用户状态管理
-├── ui/theme/                # 主题配置
-│   ├── Theme.kt             # 应用主题
-│   ├── Color.kt             # 颜色定义
-│   └── Type.kt              # 字体排版
-├── MainActivity.kt          # 应用入口
-└── Navigation.kt            # 导航配置
+├── 📂 components/              # 🎨 可复用 UI 组件库
+│   ├── VideoItem.kt           # 📹 视频列表项组件
+│   ├── PaginationComponent.kt # 📄 智能分页组件
+│   └── LoadingSkeleton.kt     # ⚡ 优雅加载骨架屏
+├── 📂 models/                  # 📊 数据模型层
+│   └── Video.kt               # 🎬 视频数据模型
+├── 📂 network/                 # 🌐 网络请求层
+│   ├── NetworkService.kt      # 🔗 网络请求服务
+│   └── ApiEndpoints.kt        # 📍 API 接口定义
+├── 📂 screens/                 # 📱 页面组件层
+│   ├── HomeScreen.kt          # 🏠 首页
+│   ├── FavoritesScreen.kt     # ❤️ 收藏页面
+│   ├── ProfileScreen.kt       # 👤 个人中心
+│   └── SearchScreen.kt        # 🔍 搜索页面
+├── 📂 state/                   # 💾 状态管理层
+│   └── UserStateManager.kt    # 👤 用户状态管理
+├── 📂 ui/theme/                # 🎨 主题配置层
+│   ├── Theme.kt               # 🎯 应用主题
+│   ├── Color.kt               # 🌈 颜色定义
+│   └── Type.kt                # 🔤 字体排版
+├── 📂 download/                # ⬇️ 下载管理层
+│   └── M3U8DownloadManager    # 📹 M3U8 下载管理
+├── MainActivity.kt            # 🚀 应用入口
+└── Navigation.kt              # 🧭 导航配置
 ```
 
-## 环境配置
+---
 
-### 开发环境要求
+## ⚙️ 环境配置
 
-| 工具 | 版本要求 |
-|------|----------|
-| Android Studio | Hedgehog (2023.1.1) 或更高版本 |
-| JDK | 17 |
-| Gradle | 8.4+ |
-| Android SDK | 34 |
+### 🔧 开发环境要求
 
-### 核心依赖配置
+| 工具 | 版本要求 | 说明 |
+|------|----------|------|
+| **Android Studio** | Hedgehog (2023.1.1)+ | 官方 IDE |
+| **JDK** | 17 | Java 开发套件 |
+| **Gradle** | 8.4+ | 构建工具 |
+| **Android SDK** | 34 | 编译目标 SDK |
 
-项目使用 Gradle Kotlin DSL 进行构建配置：
+### 📦 核心依赖配置
+
+项目采用 Gradle Kotlin DSL 进行现代化构建配置：
 
 ```kotlin
-// Core
+// 🚀 Core
 implementation("androidx.core:core-ktx:1.12.0")
 implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 
-// Compose BOM
+// 🎨 Compose BOM
 implementation(platform("androidx.compose:compose-bom:2024.02.00"))
 implementation("androidx.compose.ui:ui")
 implementation("androidx.compose.ui:ui-graphics")
@@ -110,54 +160,100 @@ implementation("androidx.compose.ui:ui-tooling-preview")
 implementation("androidx.compose.material3:material3")
 implementation("androidx.compose.material:material-icons-extended")
 
-// Navigation
+// 🧭 Navigation
 implementation("androidx.navigation:navigation-compose:2.7.7")
 
-// Network
+// 🌐 Network
 implementation("com.squareup.okhttp3:okhttp:4.12.0")
 implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 implementation("org.jsoup:jsoup:1.17.2")
 
-// Coroutines
+// ⚡ Coroutines
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 ```
 
-## 快速开始
+---
 
-### 编译构建
+## 🚀 快速开始
+
+### 📦 编译构建
 
 ```bash
-# 同步并构建项目
+# 🔄 同步并构建项目
 ./gradlew assembleDebug
 
-# 运行 lint 检查
+# ✅ 运行 lint 代码检查
 ./gradlew lint
 
-# 运行单元测试
+# 🧪 运行单元测试
 ./gradlew test
 
-# 清理构建产物
+# 🧹 清理构建产物
 ./gradlew clean
 
-# 调试构建并安装
+# 📱 调试构建并安装到设备
 ./gradlew installDebug
 ```
 
-### 运行应用
+### 📱 运行应用
 
-1. 使用 Android Studio 打开项目
-2. 等待 Gradle 同步完成
-3. 选择目标设备（真机或模拟器）
-4. 点击 `Run` 按钮或使用快捷键 `Shift + F10`
-
-## 数据来源
-
-本应用数据来源于 [123av.com](https://123av.com)，仅供学习和研究使用。
-
-## 许可证
-
-MIT License
+1. 📂 使用 Android Studio 打开项目
+2. ⏳ 等待 Gradle 同步完成
+3. 📱 选择目标设备（真机或模拟器）
+4. ▶️ 点击 `Run` 按钮或使用快捷键 `Shift + F10`
 
 ---
 
-> **声明**：本项目仅供学习交流使用，请勿用于商业用途。如有侵权，请联系删除。
+## 📡 数据来源
+
+本应用数据来源于 [123AV.com](https://123av.com)，仅供学习交流与研究使用。
+
+---
+
+## 📄 许可证
+
+<div align="center">
+
+### MIT License
+
+
+## ⚠️ 免责声明
+
+<div align="left" style="background-color: #1a1a2e; padding: 20px; border-radius: 12px; border: 1px solid #16213e;">
+
+### 📌 法律声明
+
+**1. 数据来源声明**
+- 本应用程序所展示的全部数据均来源于公开的第三方平台 [123AV.com](https://123av.com)
+- 本应用仅作为技术演示与学习研究之用，不拥有任何原始数据内容
+
+**2. 无关联关系声明**
+- 本项目与 **www.123av.com** 及其关联方不存在任何形式的隶属、合作、授权或代言关系
+- 本应用未获得 123AV 官方的任何形式认可或背书
+
+**3. 使用限制声明**
+- 本软件仅供个人学习研究和技术交流使用
+- **严禁将本软件用于任何商业用途**
+- 用户应自行承担使用本软件的一切法律责任
+
+**4. 知识产权声明**
+- 本软件涉及的知识产权归原始权利人所有
+- 如您认为本软件侵犯了您的权益，请立即联系我们进行删除处理
+
+**5. 风险提示声明**
+- 本软件按"原样"提供，不提供任何明示或暗示的保证
+- 对于因使用本软件而产生的任何直接或间接损失，我们不承担任何责任
+- 使用本软件即表示您已充分理解并同意上述全部声明
+
+</div>
+
+<div align="center">
+
+---
+
+**如对本仓库有任何异议，请通过 GitHub Issues 联系并将会第一时间进行处理。**
+
+</div>
+
+</div>
+
