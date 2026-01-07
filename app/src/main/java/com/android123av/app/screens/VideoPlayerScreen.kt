@@ -179,7 +179,7 @@ fun VideoPlayerScreen(
 
     fun scheduleHideControls() {
         hideControlsJob.value?.cancel()
-        if (exoPlayer?.isPlaying == true && !isLocked && !showSpeedSelector) {
+        if (exoPlayer?.isPlaying == true && !isLocked && !showSpeedSelector && !isSeeking) {
             hideControlsJob.value = coroutineScope.launch {
                 val hideDelay = when {
                     playbackState == Player.STATE_BUFFERING -> 8000L
@@ -263,8 +263,6 @@ fun VideoPlayerScreen(
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 videoWidth = videoSize.width
                 videoHeight = videoSize.height
-                Log.d("VideoPlayer", "onVideoSizeChanged: width=${videoSize.width}, height=${videoSize.height}, " +
-                        "unappliedRotation=${videoSize.unappliedRotationDegrees}, currentResizeMode=$resizeMode")
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -406,6 +404,15 @@ fun VideoPlayerScreen(
         setSystemUIVisibility(isFullscreen)
     }
 
+    fun toggleResizeMode() {
+        resizeMode = when (resizeMode) {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer?.release()
@@ -531,6 +538,7 @@ fun VideoPlayerScreen(
                                 controlsAlpha = controlsAlpha,
                                 showControls = showControls,
                                 lastInteractionTime = lastInteractionTime,
+                                isSeeking = isSeeking,
                                 onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
                                 onFullscreen = { isFullscreen = !isFullscreen },
                                 onLock = { isLocked = !isLocked },
@@ -538,7 +546,11 @@ fun VideoPlayerScreen(
                                     currentSpeedIndex = index
                                     exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
                                 },
-                                onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                onSpeedSelectorToggle = {
+                                    showSpeedSelector = !showSpeedSelector
+                                    updateInteractionTime()
+                                    scheduleHideControls()
+                                },
                                 onPlayPause = {
                                     exoPlayer?.let { player ->
                                         if (player.isPlaying) {
@@ -553,16 +565,8 @@ fun VideoPlayerScreen(
                                 onUpdateInteractionTime = { updateInteractionTime() },
                                 onHideControlsNow = { hideControls() },
                                 onShowControlsTemporarily = { toggleControls() },
-                                onResizeModeChange = {
-                                    Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
-                                    resizeMode = when (resizeMode) {
-                                        AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                        AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                    }
-                                    Log.d("VideoPlayer", "Resize mode changed to: $resizeMode")
-                                },
+                                onResizeModeChange = { toggleResizeMode() },
+                                onIsSeekingChange = { isSeeking = it },
                                 resizeMode = resizeMode
                             )
                         }
@@ -612,6 +616,7 @@ fun VideoPlayerScreen(
                                         controlsAlpha = controlsAlpha,
                                         showControls = showControls,
                                         lastInteractionTime = lastInteractionTime,
+                                        isSeeking = isSeeking,
                                         onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
                                         onFullscreen = { isFullscreen = !isFullscreen },
                                         onLock = { isLocked = !isLocked },
@@ -619,7 +624,11 @@ fun VideoPlayerScreen(
                                             currentSpeedIndex = index
                                             exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
                                         },
-                                        onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                        onSpeedSelectorToggle = {
+                                            showSpeedSelector = !showSpeedSelector
+                                            updateInteractionTime()
+                                            scheduleHideControls()
+                                        },
                                         onPlayPause = {
                                             exoPlayer?.let { player ->
                                                 if (player.isPlaying) {
@@ -634,16 +643,8 @@ fun VideoPlayerScreen(
                                         onUpdateInteractionTime = { updateInteractionTime() },
                                         onHideControlsNow = { hideControls() },
                                         onShowControlsTemporarily = { toggleControls() },
-                                        onResizeModeChange = {
-                                            Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
-                                            resizeMode = when (resizeMode) {
-                                                AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                                AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                                AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                            }
-                                            Log.d("VideoPlayer", "Resize mode changed to: $resizeMode")
-                                        },
+                                        onResizeModeChange = { toggleResizeMode() },
+                                        onIsSeekingChange = { isSeeking = it },
                                         resizeMode = resizeMode
                                     )
                                 }
@@ -725,6 +726,7 @@ fun VideoPlayerScreen(
                                         controlsAlpha = controlsAlpha,
                                         showControls = showControls,
                                         lastInteractionTime = lastInteractionTime,
+                                        isSeeking = isSeeking,
                                         onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
                                         onFullscreen = { isFullscreen = !isFullscreen },
                                         onLock = { isLocked = !isLocked },
@@ -732,7 +734,11 @@ fun VideoPlayerScreen(
                                             currentSpeedIndex = index
                                             exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
                                         },
-                                        onSpeedSelectorToggle = { showSpeedSelector = !showSpeedSelector },
+                                        onSpeedSelectorToggle = {
+                                            showSpeedSelector = !showSpeedSelector
+                                            updateInteractionTime()
+                                            scheduleHideControls()
+                                        },
                                         onPlayPause = {
                                             exoPlayer?.let { player ->
                                                 if (player.isPlaying) {
@@ -747,16 +753,8 @@ fun VideoPlayerScreen(
                                         onUpdateInteractionTime = { updateInteractionTime() },
                                         onHideControlsNow = { hideControls() },
                                         onShowControlsTemporarily = { toggleControls() },
-                                        onResizeModeChange = {
-                                            Log.d("VideoPlayer", "onResizeModeChange triggered, current: $resizeMode")
-                                            resizeMode = when (resizeMode) {
-                                                AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                                AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                                AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                            }
-                                            Log.d("VideoPlayer", "Resize mode changed to: $resizeMode")
-                                        },
+                                        onResizeModeChange = { toggleResizeMode() },
+                                        onIsSeekingChange = { isSeeking = it },
                                         resizeMode = resizeMode
                                     )
                                 }
@@ -975,6 +973,7 @@ private fun PlayerControls(
     controlsAlpha: Float,
     showControls: Boolean,
     lastInteractionTime: Long,
+    isSeeking: Boolean,
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
@@ -987,6 +986,7 @@ private fun PlayerControls(
     onHideControlsNow: () -> Unit,
     onShowControlsTemporarily: () -> Unit,
     onResizeModeChange: () -> Unit,
+    onIsSeekingChange: (Boolean) -> Unit,
     resizeMode: Int
 ) {
     val context = LocalContext.current
@@ -995,7 +995,6 @@ private fun PlayerControls(
     var duration by remember { mutableStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
     var isPlaying by remember { mutableStateOf(exoPlayer?.isPlaying ?: false) }
     var playbackState by remember { mutableStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
-    var isSeeking by remember { mutableStateOf(false) }
     
     LaunchedEffect(exoPlayer) {
         while (true) {
@@ -1053,8 +1052,11 @@ private fun PlayerControls(
                         onSeekForward = {
                             exoPlayer?.seekTo((currentPosition + 10000).coerceAtMost(duration))
                         },
-                        onSeekStart = { isSeeking = true },
-                        onSeekStop = { isSeeking = false },
+                        onSeekStart = {
+                            onIsSeekingChange(true)
+                            onUpdateInteractionTime()
+                        },
+                        onSeekStop = { onIsSeekingChange(false) },
                         onTap = onShowControlsTemporarily,
                         onDoubleTap = onPlayPause,
                         onLongPress = { isPressed ->
@@ -1550,6 +1552,9 @@ private fun BottomBar(
     var showPreview by remember { mutableStateOf(false) }
     var previewPosition by remember { mutableStateOf(0L) }
     var previewProgress by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    
+    val displayProgress = if (isDragging) previewProgress else progress
     
     Column(
         modifier = Modifier
@@ -1594,6 +1599,7 @@ private fun BottomBar(
                             .pointerInput(Unit) {
                                 detectDragGestures(
                                     onDragStart = { offset ->
+                                        isDragging = true
                                         showPreview = true
                                         onSeekStart()
                                         val calculatedProgress = (offset.x / trackWidthPx).coerceIn(0f, 1f)
@@ -1604,13 +1610,15 @@ private fun BottomBar(
                                         val calculatedProgress = (change.position.x / trackWidthPx).coerceIn(0f, 1f)
                                         previewProgress = calculatedProgress
                                         previewPosition = (calculatedProgress * duration).toLong()
-                                        onSeek(calculatedProgress)
                                     },
                                     onDragEnd = {
+                                        isDragging = false
+                                        onSeek(previewProgress)
                                         showPreview = false
                                         onSeekStop()
                                     },
                                     onDragCancel = {
+                                        isDragging = false
                                         showPreview = false
                                         onSeekStop()
                                     }
@@ -1636,14 +1644,14 @@ private fun BottomBar(
                             drawRoundRect(
                                 color = activeTrackColor,
                                 topLeft = Offset(0f, centerY - trackHeight / 2),
-                                size = Size(size.width * progress, trackHeight),
+                                size = Size(size.width * displayProgress, trackHeight),
                                 cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
                             )
                         }
 
                         // 滑块圆点（响应式位置）
                         val thumbSize = 12.dp
-                        val thumbDp = with(density) { (progress * trackWidthPx).toDp() }
+                        val thumbDp = with(density) { (displayProgress * trackWidthPx).toDp() }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
@@ -2061,101 +2069,103 @@ private fun VideoInfoSection(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            DownloadStatusCard(
-                existingDownloadTask = existingDownloadTask,
-                downloadProgress = downloadProgress,
-                isDownloadActive = isDownloadActive,
-                downloadManager = downloadManager,
-                context = context,
-                coroutineScope = coroutineScope,
-                onDownloadTaskUpdated = onDownloadTaskUpdated,
-                onDownloadingStateChanged = onDownloadingStateChanged,
-                onDownloadProgressChanged = onDownloadProgressChanged,
-                video = video,
-                videoUrl = videoUrl,
-                onNavigateToDownloads = {
-                    val intent = Intent(context, DownloadsActivity::class.java)
-                    context.startActivity(intent)
-                }
-            )
+            if (cachedTitle == null) {
+                DownloadStatusCard(
+                    existingDownloadTask = existingDownloadTask,
+                    downloadProgress = downloadProgress,
+                    isDownloadActive = isDownloadActive,
+                    downloadManager = downloadManager,
+                    context = context,
+                    coroutineScope = coroutineScope,
+                    onDownloadTaskUpdated = onDownloadTaskUpdated,
+                    onDownloadingStateChanged = onDownloadingStateChanged,
+                    onDownloadProgressChanged = onDownloadProgressChanged,
+                    video = video,
+                    videoUrl = videoUrl,
+                    onNavigateToDownloads = {
+                        val intent = Intent(context, DownloadsActivity::class.java)
+                        context.startActivity(intent)
+                    }
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                FilledTonalButton(
-                    onClick = { },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FavoriteBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "收藏",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-
-                val buttonText = when {
-                    existingDownloadTask?.status == DownloadStatus.COMPLETED -> "已下载"
-                    existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> "下载中 ${existingDownloadTask?.progressDisplay ?: "0.00%"}"
-                    existingDownloadTask?.status == DownloadStatus.PAUSED -> "继续下载"
-                    existingDownloadTask?.status == DownloadStatus.FAILED -> "重试下载"
-                    else -> "下载"
-                }
-
-                val buttonIcon = when {
-                    existingDownloadTask?.status == DownloadStatus.COMPLETED -> Icons.Default.DownloadDone
-                    existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> Icons.Default.Download
-                    else -> Icons.Default.Download
-                }
-
-                val isButtonEnabled = existingDownloadTask?.status != DownloadStatus.DOWNLOADING
-
-                OutlinedButton(
-                    onClick = {
-                        handleDownload(
-                            video = video,
-                            videoUrl = videoUrl,
-                            downloadManager = downloadManager,
-                            context = context,
-                            existingTask = existingDownloadTask,
-                            onTaskCreated = { taskId ->
-                                coroutineScope.launch {
-                                    val task = downloadManager.getTaskById(taskId)
-                                    onDownloadTaskUpdated(task)
-                                }
-                            },
-                            onDownloading = { downloading, progress ->
-                                onDownloadingStateChanged(downloading)
-                                onDownloadProgressChanged(progress)
-                            },
-                            coroutineScope = coroutineScope
+                    FilledTonalButton(
+                        onClick = { },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
-                    },
-                    enabled = isButtonEnabled,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = buttonIcon,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = buttonText,
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FavoriteBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "收藏",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+
+                    val buttonText = when {
+                        existingDownloadTask?.status == DownloadStatus.COMPLETED -> "已下载"
+                        existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> "下载中 ${existingDownloadTask?.progressDisplay ?: "0.00%"}"
+                        existingDownloadTask?.status == DownloadStatus.PAUSED -> "继续下载"
+                        existingDownloadTask?.status == DownloadStatus.FAILED -> "重试下载"
+                        else -> "下载"
+                    }
+
+                    val buttonIcon = when {
+                        existingDownloadTask?.status == DownloadStatus.COMPLETED -> Icons.Default.DownloadDone
+                        existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> Icons.Default.Download
+                        else -> Icons.Default.Download
+                    }
+
+                    val isButtonEnabled = existingDownloadTask?.status != DownloadStatus.DOWNLOADING
+
+                    OutlinedButton(
+                        onClick = {
+                            handleDownload(
+                                video = video,
+                                videoUrl = videoUrl,
+                                downloadManager = downloadManager,
+                                context = context,
+                                existingTask = existingDownloadTask,
+                                onTaskCreated = { taskId ->
+                                    coroutineScope.launch {
+                                        val task = downloadManager.getTaskById(taskId)
+                                        onDownloadTaskUpdated(task)
+                                    }
+                                },
+                                onDownloading = { downloading, progress ->
+                                    onDownloadingStateChanged(downloading)
+                                    onDownloadProgressChanged(progress)
+                                },
+                                coroutineScope = coroutineScope
+                            )
+                        },
+                        enabled = isButtonEnabled,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = buttonIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = buttonText,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
         }
