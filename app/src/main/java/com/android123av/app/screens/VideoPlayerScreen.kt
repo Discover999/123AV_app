@@ -66,7 +66,10 @@ import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import com.android123av.app.DownloadsActivity
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
@@ -992,6 +995,7 @@ private fun PlayerControls(
     val context = LocalContext.current
     
     var currentPosition by remember { mutableStateOf(exoPlayer?.currentPosition ?: 0L) }
+    var bufferedPosition by remember { mutableStateOf(exoPlayer?.bufferedPosition ?: 0L) }
     var duration by remember { mutableStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
     var isPlaying by remember { mutableStateOf(exoPlayer?.isPlaying ?: false) }
     var playbackState by remember { mutableStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
@@ -1001,6 +1005,7 @@ private fun PlayerControls(
             kotlinx.coroutines.delay(200)
             exoPlayer?.let { player ->
                 currentPosition = player.currentPosition
+                bufferedPosition = player.bufferedPosition
                 duration = player.duration.takeIf { it > 0 } ?: 0L
                 isPlaying = player.isPlaying
                 playbackState = player.playbackState
@@ -1030,6 +1035,7 @@ private fun PlayerControls(
                         showSpeedSelector = showSpeedSelector,
                         currentSpeedIndex = currentSpeedIndex,
                         currentPosition = currentPosition,
+                        bufferedPosition = bufferedPosition,
                         duration = duration,
                         progress = progress,
                         isPlaying = isPlaying,
@@ -1081,6 +1087,7 @@ private fun VideoPlayerOverlay(
     showSpeedSelector: Boolean,
     currentSpeedIndex: Int,
     currentPosition: Long,
+    bufferedPosition: Long,
     duration: Long,
     progress: Float,
     isPlaying: Boolean,
@@ -1210,6 +1217,7 @@ private fun VideoPlayerOverlay(
                 // 底部进度条与速度选择（保持现有功能，但视觉更紧凑）
                 BottomBar(
                     currentPosition = currentPosition,
+                    bufferedPosition = bufferedPosition,
                     duration = duration,
                     progress = progress,
                     onSeek = onSeek,
@@ -1543,6 +1551,7 @@ private fun ControlButton(
 @Composable
 private fun BottomBar(
     currentPosition: Long,
+    bufferedPosition: Long,
     duration: Long,
     progress: Float,
     onSeek: (Float) -> Unit,
@@ -1625,43 +1634,92 @@ private fun BottomBar(
                                 )
                             }
                     ) {
-                        val inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        val inactiveTrackColor = Color.White.copy(alpha = 0.2f)
                         val activeTrackColor = MaterialTheme.colorScheme.primary
+                        val glowColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
 
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            val trackHeight = 4.dp.toPx()
+                            val trackHeight = 6.dp.toPx()
                             val centerY = size.height / 2
+                            val activeWidth = size.width * displayProgress
+                            val bufferedWidth = size.width * bufferedProgress
 
-                            // 绘制未播放部分
+                            // 绘制未播放部分（带渐变）
                             drawRoundRect(
-                                color = inactiveTrackColor,
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.15f),
+                                        Color.White.copy(alpha = 0.25f)
+                                    )
+                                ),
                                 topLeft = Offset(0f, centerY - trackHeight / 2),
                                 size = Size(size.width, trackHeight),
                                 cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
                             )
 
-                            // 绘制已播放部分
-                            drawRoundRect(
-                                color = activeTrackColor,
-                                topLeft = Offset(0f, centerY - trackHeight / 2),
-                                size = Size(size.width * displayProgress, trackHeight),
-                                cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
-                            )
+                            // 绘制缓冲部分
+                            if (bufferedWidth > activeWidth) {
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.4f),
+                                    topLeft = Offset(activeWidth, centerY - trackHeight / 2),
+                                    size = Size(bufferedWidth - activeWidth, trackHeight),
+                                    cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
+                                )
+                            }
+
+                            // 绘制已播放部分（带渐变）
+                            if (activeWidth > 0) {
+                                drawRoundRect(
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            activeTrackColor,
+                                            activeTrackColor.copy(alpha = 0.9f)
+                                        )
+                                    ),
+                                    topLeft = Offset(0f, centerY - trackHeight / 2),
+                                    size = Size(activeWidth, trackHeight),
+                                    cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
+                                )
+
+                                // 添加发光效果
+                                drawRoundRect(
+                                    color = glowColor,
+                                    topLeft = Offset(0f, centerY - trackHeight / 2 - 4.dp.toPx()),
+                                    size = Size(activeWidth, trackHeight + 8.dp.toPx()),
+                                    cornerRadius = CornerRadius((trackHeight + 8.dp.toPx()) / 2, (trackHeight + 8.dp.toPx()) / 2),
+                                    alpha = 0.5f
+                                )
+                            }
                         }
 
                         // 滑块圆点（响应式位置）
-                        val thumbSize = 12.dp
+                        val thumbSize = 16.dp
                         val thumbDp = with(density) { (displayProgress * trackWidthPx).toDp() }
+                        val thumbScale by animateFloatAsState(
+                            targetValue = if (isDragging) 1.2f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "thumbScale"
+                        )
+                        
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
                                 .offset(x = thumbDp - thumbSize / 2)
                                 .size(thumbSize)
+                                .graphicsLayer {
+                                    scaleX = thumbScale
+                                    scaleY = thumbScale
+                                    shadowElevation = 6.dp.toPx()
+                                }
                                 .clip(CircleShape)
                                 .background(Color.White)
                                 .border(
                                     width = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = activeTrackColor,
                                     shape = CircleShape
                                 )
                         )
@@ -1669,27 +1727,68 @@ private fun BottomBar(
                         // 预览效果
                         if (showPreview) {
                             val previewDp = with(density) { (previewProgress * trackWidthPx).toDp() }
+                            val previewAlpha by animateFloatAsState(
+                                targetValue = if (showPreview) 1f else 0f,
+                                animationSpec = tween(
+                                    durationMillis = 200,
+                                    easing = FastOutSlowInEasing
+                                ),
+                                label = "previewAlpha"
+                            )
+                            val previewOffset by animateDpAsState(
+                                targetValue = (-32).dp,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "previewOffset"
+                            )
+                            
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
-                                    .offset(x = previewDp - 28.dp)
+                                    .offset(x = previewDp - 32.dp)
                                     .zIndex(1f)
+                                    .graphicsLayer {
+                                        alpha = previewAlpha
+                                    }
                             ) {
                                 Card(
                                     modifier = Modifier
-                                        .offset(y = (-24.dp)),
+                                        .offset(y = previewOffset)
+                                        .graphicsLayer {
+                                            shadowElevation = 12.dp.toPx()
+                                        },
                                     colors = CardDefaults.cardColors(
-                                        containerColor = Color.Black.copy(alpha = 0.8f)
+                                        containerColor = Color.Black.copy(alpha = 0.85f)
                                     ),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = formatTime(previewPosition),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(
+                                        width = 1.5.dp,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                                     )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .background(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    shape = CircleShape
+                                                )
+                                        )
+                                        Text(
+                                            text = formatTime(previewPosition),
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
                                 }
                             }
                         }
