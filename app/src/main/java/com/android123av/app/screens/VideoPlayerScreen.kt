@@ -60,8 +60,10 @@ import com.android123av.app.network.fetchM3u8UrlWithWebView
 import com.android123av.app.network.fetchVideoDetails
 import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchVideoUrlParallel
+import com.android123av.app.network.fetchAllVideoParts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.FlowRow
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -115,6 +117,9 @@ fun VideoPlayerScreen(
     var cachedTitle by remember { mutableStateOf<String?>(null) }
     var isLoadingDetails by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var videoParts by remember { mutableStateOf<List<com.android123av.app.models.VideoPart>>(emptyList()) }
+    var selectedPartIndex by remember { mutableIntStateOf(0) }
+    var isLoadingParts by remember { mutableStateOf(false) }
 
     var exoPlayer by remember { mutableStateOf<Player?>(null) }
     var showControls by remember { mutableStateOf(true) }
@@ -322,6 +327,7 @@ fun VideoPlayerScreen(
         
         isLoading = true
         errorMessage = null
+        isLoadingParts = true
         
         coroutineScope.launch {
             try {
@@ -351,8 +357,21 @@ fun VideoPlayerScreen(
                     }
                 }
                 
+                val partsDeferred = async {
+                    try {
+                        val parts = fetchAllVideoParts(context, video.id)
+                        Log.d("VideoPlayer", "✅ 获取到 ${parts.size} 个视频部分")
+                        parts
+                    } catch (e: Exception) {
+                        Log.e("VideoPlayer", "❌ 获取视频部分失败: ${e.message}")
+                        emptyList()
+                    }
+                }
+                
                 videoUrl = videoUrlDeferred.await()
                 videoDetails = detailsDeferred.await()
+                videoParts = partsDeferred.await()
+                isLoadingParts = false
                 
                 if (videoUrl == null) {
                     errorMessage = "无法获取视频播放地址"
@@ -366,6 +385,7 @@ fun VideoPlayerScreen(
             } catch (e: Exception) {
                 Log.e("VideoPlayer", "❌ 获取视频失败: ${e.message}")
                 errorMessage = "获取视频失败: ${e.message}"
+                isLoadingParts = false
             } finally {
                 isLoading = false
             }
@@ -679,6 +699,25 @@ fun VideoPlayerScreen(
                                             onDownloadTaskUpdated = { task -> existingDownloadTask = task },
                                             onDownloadingStateChanged = { downloading -> isDownloading = downloading },
                                             onDownloadProgressChanged = { progress -> downloadProgress = progress },
+                                            videoParts = videoParts,
+                                            selectedPartIndex = selectedPartIndex,
+                                            onPartSelected = { index ->
+                                                selectedPartIndex = index
+                                                val partUrl = videoParts.getOrNull(index)?.url
+                                                android.util.Log.d("VideoPlayer", "点击部分${index + 1}，播放链接: $partUrl")
+                                                if (!partUrl.isNullOrBlank()) {
+                                                    coroutineScope.launch {
+                                                        isLoading = true
+                                                        videoUrl = partUrl
+                                                        exoPlayer?.let { player ->
+                                                            player.stop()
+                                                            player.release()
+                                                        }
+                                                        exoPlayer = null
+                                                        isLoading = false
+                                                    }
+                                                }
+                                            },
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }
@@ -783,6 +822,25 @@ fun VideoPlayerScreen(
                                         onDownloadTaskUpdated = { task -> existingDownloadTask = task },
                                         onDownloadingStateChanged = { downloading -> isDownloading = downloading },
                                         onDownloadProgressChanged = { progress -> downloadProgress = progress },
+                                        videoParts = videoParts,
+                                        selectedPartIndex = selectedPartIndex,
+                                        onPartSelected = { index ->
+                                            selectedPartIndex = index
+                                            val partUrl = videoParts.getOrNull(index)?.url
+                                            android.util.Log.d("VideoPlayer", "点击部分${index + 1}，播放链接: $partUrl")
+                                            if (!partUrl.isNullOrBlank()) {
+                                                coroutineScope.launch {
+                                                    isLoading = true
+                                                    videoUrl = partUrl
+                                                    exoPlayer?.let { player ->
+                                                        player.stop()
+                                                        player.release()
+                                                    }
+                                                    exoPlayer = null
+                                                    isLoading = false
+                                                }
+                                            }
+                                        },
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -2019,6 +2077,9 @@ private fun VideoInfoSection(
     onDownloadTaskUpdated: (DownloadTask?) -> Unit,
     onDownloadingStateChanged: (Boolean) -> Unit,
     onDownloadProgressChanged: (Int) -> Unit,
+    videoParts: List<com.android123av.app.models.VideoPart>,
+    selectedPartIndex: Int,
+    onPartSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isTitleExpanded by remember { mutableStateOf(false) }
@@ -2142,6 +2203,69 @@ private fun VideoInfoSection(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+        }
+
+        if (videoParts.size > 1) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistPlay,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "视频部分",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        videoParts.forEachIndexed { index, part ->
+                            FilterChip(
+                                selected = selectedPartIndex == index,
+                                onClick = { onPartSelected(index) },
+                                label = {
+                                    Text(
+                                        text = part.name,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                },
+                                leadingIcon = if (selectedPartIndex == index) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -57,7 +57,8 @@ data class Video(
     val thumbnailUrl: String?,
     val videoUrl: String? = null,
     val details: VideoDetails? = null,
-    val favouriteCount: Int = 0
+    val favouriteCount: Int = 0,
+    val parts: List<VideoPart> = emptyList()
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         parcel.readString() ?: "",
@@ -66,7 +67,8 @@ data class Video(
         parcel.readString(),
         parcel.readString(),
         parcel.readParcelable(VideoDetails::class.java.classLoader),
-        parcel.readInt()
+        parcel.readInt(),
+        parcel.createTypedArrayList(VideoPart.CREATOR) ?: emptyList()
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -76,6 +78,8 @@ data class Video(
         parcel.writeString(thumbnailUrl)
         parcel.writeString(videoUrl)
         parcel.writeParcelable(details, flags)
+        parcel.writeInt(favouriteCount)
+        parcel.writeTypedList(parts)
     }
 
     override fun describeContents(): Int {
@@ -104,6 +108,36 @@ data class PaginationInfo(
 // 视图模式枚举
 enum class ViewMode {
     LIST, GRID
+}
+
+// 视频部分数据类
+data class VideoPart(
+    val name: String,
+    val url: String? = null
+) : Parcelable {
+    constructor(parcel: Parcel) : this(
+        parcel.readString() ?: "",
+        parcel.readString()
+    )
+
+    override fun writeToParcel(parcel: Parcel, flags: Int) {
+        parcel.writeString(name)
+        parcel.writeString(url)
+    }
+
+    override fun describeContents(): Int {
+        return 0
+    }
+
+    companion object CREATOR : Parcelable.Creator<VideoPart> {
+        override fun createFromParcel(parcel: Parcel): VideoPart {
+            return VideoPart(parcel)
+        }
+
+        override fun newArray(size: Int): Array<VideoPart?> {
+            return arrayOfNulls(size)
+        }
+    }
 }
 
 
