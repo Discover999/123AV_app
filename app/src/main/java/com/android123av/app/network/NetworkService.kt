@@ -350,9 +350,12 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
         var currentPartIndex = 0
         var totalParts = 0
         var isProcessing = false
+        var isDestroyed = false
         
         fun cleanup() {
             try {
+                if (isDestroyed) return
+                isDestroyed = true
                 timeoutHandler?.removeCallbacks(timeoutRunnable!!)
                 webView?.let { wv ->
                     Handler(Looper.getMainLooper()).post {
@@ -395,7 +398,7 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                     if (isProcessing) return
                     
                     Handler(Looper.getMainLooper()).postDelayed({
-                        if (isProcessing) return@postDelayed
+                        if (isProcessing || isDestroyed) return@postDelayed
                         
                         android.util.Log.d("VideoParts", "延迟执行 JavaScript 检查")
                         try {
@@ -416,6 +419,11 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                             """.trimIndent()
                             
                             currentWebView.evaluateJavascript(script) { value ->
+                                if (isDestroyed) {
+                                    android.util.Log.d("VideoParts", "WebView 已销毁，忽略 JavaScript 回调")
+                                    return@evaluateJavascript
+                                }
+                                
                                 android.util.Log.d("VideoParts", "JavaScript 返回值: $value")
                                 
                                 if (value == null || value == "null") {
@@ -436,16 +444,16 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                                 
                                 try {
                                     val gson = Gson()
-                                    val type = object : com.google.gson.reflect.TypeToken<Array<Map<String, Any>>>() {}.type
-                                    val partsArray = gson.fromJson<Array<Map<String, Any>>>(partsJson, type)
-                                    totalParts = partsArray.size
+                                    val jsonArray = com.google.gson.JsonParser.parseString(partsJson).asJsonArray
+                                    totalParts = jsonArray.size()
                                     android.util.Log.d("VideoParts", "解析到 $totalParts 个视频部分")
                                     
                                     if (totalParts > 0) {
                                         isProcessing = true
                                         
-                                        partsArray.forEach { partInfo ->
-                                            val partName = partInfo["name"]?.toString() ?: ""
+                                        jsonArray.forEach { element ->
+                                            val jsonObj = element.asJsonObject
+                                            val partName = jsonObj.get("name")?.asString ?: ""
                                             partsList.add(VideoPart(partName, null))
                                         }
                                         android.util.Log.d("VideoParts", "初始化了 ${partsList.size} 个部分")
