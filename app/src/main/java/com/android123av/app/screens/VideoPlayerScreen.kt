@@ -246,7 +246,7 @@ fun VideoPlayerScreen(
                         showControls = true
                         hideControlsJob.value?.cancel()
                         isPlaying = false
-                        // 播放完成后的处理
+                        activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         if (isFullscreen) {
                             isFullscreen = false
                         }
@@ -262,9 +262,11 @@ fun VideoPlayerScreen(
                 isPlaying = playing
                 if (playing) {
                     scheduleHideControls()
+                    activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } else {
                     hideControlsJob.value?.cancel()
                     showControls = true
+                    activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
             }
 
@@ -442,6 +444,7 @@ fun VideoPlayerScreen(
             hideControlsJob.value?.cancel()
             setSystemUIVisibility(false)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -599,7 +602,7 @@ fun VideoPlayerScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(250.dp)
+                                        .aspectRatio(16f / 9f)
                                 ) {
                                     AndroidView(
                                         factory = { ctx ->
@@ -729,7 +732,7 @@ fun VideoPlayerScreen(
                                     .fillMaxWidth()
                                     .verticalScroll(rememberScrollState())
                             ) {
-                                Box(modifier = Modifier.fillMaxWidth().height(250.dp)) {
+                                Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                                     AndroidView(
                                         factory = { ctx ->
                                             PlayerView(ctx).apply {
@@ -2127,8 +2130,6 @@ private fun VideoInfoSection(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
