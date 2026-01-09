@@ -31,6 +31,12 @@ fun parseVideoDetails(html: String): VideoDetails? {
         // 解析收藏数
         val favouriteCount = doc.select("span[ref=counter]").firstOrNull()?.text()?.toIntOrNull() ?: 0
         
+        // 解析真实ID（从收藏按钮的v-scope属性中提取）
+        val realId = doc.select("button.favourite").firstOrNull()?.attr("v-scope")?.let { vScope ->
+            val regex = Regex("Favourite\\('movie',\\s*(\\d+)")
+            regex.find(vScope)?.groupValues?.get(1) ?: ""
+        } ?: ""
+        
         VideoDetails(
             code = code,
             releaseDate = releaseDate,
@@ -39,7 +45,8 @@ fun parseVideoDetails(html: String): VideoDetails? {
             genres = genres,
             maker = maker,
             tags = tags,
-            favouriteCount = favouriteCount
+            favouriteCount = favouriteCount,
+            realId = realId
         )
     } catch (e: Exception) {
         e.printStackTrace()

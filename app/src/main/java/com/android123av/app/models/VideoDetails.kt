@@ -11,7 +11,8 @@ data class VideoDetails(
     val genres: List<String>,
     val maker: String,
     val tags: List<String>,
-    val favouriteCount: Int = 0
+    val favouriteCount: Int = 0,
+    val realId: String = ""
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         parcel.readString() ?: "",
@@ -21,7 +22,8 @@ data class VideoDetails(
         parcel.createStringArrayList() ?: emptyList(),
         parcel.readString() ?: "",
         parcel.createStringArrayList() ?: emptyList(),
-        parcel.readInt()
+        parcel.readInt(),
+        parcel.readString() ?: ""
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -33,6 +35,7 @@ data class VideoDetails(
         parcel.writeString(maker)
         parcel.writeStringList(tags)
         parcel.writeInt(favouriteCount)
+        parcel.writeString(realId)
     }
 
     override fun describeContents(): Int {

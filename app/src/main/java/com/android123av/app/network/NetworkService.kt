@@ -1088,3 +1088,72 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
         return@withContext null
     }
 }
+
+suspend fun fetchFavouriteStatus(videoId: String): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val favouriteStatusUrl = SiteManager.buildZhUrl("ajax/user/favourite/status?type=movie&id=$videoId")
+        android.util.Log.d("Favourite", "🔍 查询收藏状态 URL: $favouriteStatusUrl")
+        
+        val request = Request.Builder()
+            .url(favouriteStatusUrl)
+            .headers(apiHeaders(SiteManager.buildZhUrl("v/$videoId")))
+            .build()
+        
+        val response = okHttpClient.newCall(request).execute()
+        
+        android.util.Log.d("Favourite", "📡 响应状态码: ${response.code}")
+        
+        if (response.isSuccessful) {
+            val responseBody = response.body?.string() ?: ""
+            android.util.Log.d("Favourite", "📄 响应内容: $responseBody")
+            val gson = Gson()
+            val jsonElement = gson.fromJson(responseBody, com.google.gson.JsonElement::class.java)
+            val result = jsonElement.asJsonObject.get("result")?.asBoolean ?: false
+            android.util.Log.d("Favourite", "✅ 解析结果: $result")
+            return@withContext result
+        } else {
+            android.util.Log.e("Favourite", "❌ 请求失败，状态码: ${response.code}")
+            return@withContext false
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("Favourite", "❌ 查询收藏状态异常: ${e.message}", e)
+        e.printStackTrace()
+        return@withContext false
+    }
+}
+
+suspend fun toggleFavourite(videoId: String, isAdd: Boolean): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val favouriteUrl = SiteManager.buildZhUrl("ajax/user/favourite")
+        val action = if (isAdd) "add" else "remove"
+        android.util.Log.d("Favourite", "🔄 切换收藏状态: $action, videoId: $videoId")
+        
+        val formBody = FormBody.Builder()
+            .add("action", action)
+            .add("type", "movie")
+            .add("id", videoId)
+            .build()
+        
+        val request = Request.Builder()
+            .url(favouriteUrl)
+            .headers(apiHeaders(SiteManager.buildZhUrl("v/$videoId")))
+            .post(formBody)
+            .build()
+        
+        val response = okHttpClient.newCall(request).execute()
+        android.util.Log.d("Favourite", "📡 切换收藏响应状态码: ${response.code}")
+        
+        if (response.isSuccessful) {
+            val responseBody = response.body?.string() ?: ""
+            android.util.Log.d("Favourite", "📄 切换收藏响应内容: $responseBody")
+            return@withContext true
+        } else {
+            android.util.Log.e("Favourite", "❌ 切换收藏失败，状态码: ${response.code}")
+            return@withContext false
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("Favourite", "❌ 切换收藏异常: ${e.message}", e)
+        e.printStackTrace()
+        return@withContext false
+    }
+}

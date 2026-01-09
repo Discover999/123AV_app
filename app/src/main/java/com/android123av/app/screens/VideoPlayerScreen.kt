@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.android123av.app.state.rememberUserState
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -61,6 +62,8 @@ import com.android123av.app.network.fetchVideoDetails
 import com.android123av.app.network.fetchVideoUrl
 import com.android123av.app.network.fetchVideoUrlParallel
 import com.android123av.app.network.fetchAllVideoParts
+import com.android123av.app.network.fetchFavouriteStatus
+import com.android123av.app.network.toggleFavourite
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.FlowRow
@@ -78,6 +81,7 @@ import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
 import com.android123av.app.download.VideoDetailsCacheManager
 import com.android123av.app.state.DownloadPathManager
+import com.android123av.app.state.UserStateManager.isLoggedIn
 import kotlinx.coroutines.async
 
 data class PlaybackSpeed(
@@ -107,6 +111,7 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
+    val userState = rememberUserState()
     
     val activity = context as? androidx.activity.ComponentActivity
     val window = activity?.window
@@ -138,6 +143,8 @@ fun VideoPlayerScreen(
     var existingDownloadTask by remember { mutableStateOf<DownloadTask?>(null) }
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(0) }
+    var isFavourite by remember { mutableStateOf(false) }
+    var isTogglingFavourite by remember { mutableStateOf(false) }
     
     fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
@@ -375,8 +382,30 @@ fun VideoPlayerScreen(
                 videoParts = partsDeferred.await()
                 isLoadingParts = false
                 
+                val favouriteStatusDeferred = async {
+                    try {
+                        val realId = videoDetails?.realId ?: video.id
+                        val status = fetchFavouriteStatus(realId)
+                        Log.d("VideoPlayer", "✅ 收藏状态 (ID: $realId): $status")
+                        status
+                    } catch (e: Exception) {
+                        Log.e("VideoPlayer", "❌ 获取收藏状态失败: ${e.message}")
+                        false
+                    }
+                }
+                
+                isFavourite = favouriteStatusDeferred.await()
+                
                 if (videoUrl == null) {
-                    errorMessage = "无法获取视频播放地址"
+                    Log.d("VideoPlayer", "⚠️ 主视频URL为空，尝试从视频部分获取")
+                    val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
+                    if (firstPartWithUrl != null) {
+                        videoUrl = firstPartWithUrl.url
+                        Log.d("VideoPlayer", "✅ 从视频部分获取到URL: $videoUrl")
+                    } else {
+                        errorMessage = "无法获取视频播放地址"
+                        Log.e("VideoPlayer", "❌ 视频部分中也没有可用的URL")
+                    }
                 }
                 
                 val existingTask = downloadManager.getTaskByVideoId(video.id)
@@ -501,7 +530,15 @@ fun VideoPlayerScreen(
                                 }
                             }
                             if (videoUrl == null) {
-                                errorMessage = "无法获取视频播放地址"
+                                Log.d("VideoPlayer", "⚠️ 重试时主视频URL为空，尝试从视频部分获取")
+                                val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
+                                if (firstPartWithUrl != null) {
+                                    videoUrl = firstPartWithUrl.url
+                                    Log.d("VideoPlayer", "✅ 重试时从视频部分获取到URL: $videoUrl")
+                                } else {
+                                    errorMessage = "无法获取视频播放地址"
+                                    Log.e("VideoPlayer", "❌ 重试时视频部分中也没有可用的URL")
+                                }
                             }
                         } catch (e: Exception) {
                             errorMessage = "获取视频失败: ${e.message}"
@@ -721,6 +758,49 @@ fun VideoPlayerScreen(
                                                     }
                                                 }
                                             },
+                                            isFavourite = isFavourite,
+                                            isTogglingFavourite = isTogglingFavourite,
+                                            onFavouriteToggle = {
+                                                if (video == null) return@VideoInfoSection
+                                                if (!userState.isLoggedIn) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "请先登录",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                    return@VideoInfoSection
+                                                }
+                                                coroutineScope.launch {
+                                                    isTogglingFavourite = true
+                                                    try {
+                                                        val realId = videoDetails?.realId ?: video.id
+                                                        val success = toggleFavourite(realId, !isFavourite)
+                                                        if (success) {
+                                                            isFavourite = !isFavourite
+                                                            Toast.makeText(
+                                                                context,
+                                                                if (isFavourite) "已添加到收藏" else "已取消收藏",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        } else {
+                                                            Toast.makeText(
+                                                                context,
+                                                                "操作失败，请重试",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "操作失败: ${e.message}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    } finally {
+                                                        isTogglingFavourite = false
+                                                    }
+                                                }
+                                            },
+                                            isLoggedIn = userState.isLoggedIn,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }
@@ -844,6 +924,49 @@ fun VideoPlayerScreen(
                                                 }
                                             }
                                         },
+                                        isFavourite = isFavourite,
+                                        isTogglingFavourite = isTogglingFavourite,
+                                        onFavouriteToggle = {
+                                            if (video == null) return@VideoInfoSection
+                                            if (!userState.isLoggedIn) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "请先登录",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                return@VideoInfoSection
+                                            }
+                                            coroutineScope.launch {
+                                                isTogglingFavourite = true
+                                                try {
+                                                    val realId = videoDetails?.realId ?: video.id
+                                                    val success = toggleFavourite(realId, !isFavourite)
+                                                    if (success) {
+                                                        isFavourite = !isFavourite
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (isFavourite) "已添加到收藏" else "已取消收藏",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    } else {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "操作失败，请重试",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "操作失败: ${e.message}",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                } finally {
+                                                    isTogglingFavourite = false
+                                                }
+                                            }
+                                        },
+                                        isLoggedIn = userState.isLoggedIn,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -2083,6 +2206,10 @@ private fun VideoInfoSection(
     videoParts: List<com.android123av.app.models.VideoPart>,
     selectedPartIndex: Int,
     onPartSelected: (Int) -> Unit,
+    isFavourite: Boolean,
+    isTogglingFavourite: Boolean,
+    onFavouriteToggle: () -> Unit,
+    isLoggedIn: Boolean,
     modifier: Modifier = Modifier
 ) {
     var isTitleExpanded by remember { mutableStateOf(false) }
@@ -2319,23 +2446,24 @@ private fun VideoInfoSection(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     FilledTonalButton(
-                        onClick = { },
+                        onClick = onFavouriteToggle,
+                        enabled = !isTogglingFavourite,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                            containerColor = if (isFavourite) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FavoriteBorder,
+                            imageVector = if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            tint = if (isFavourite) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "收藏",
+                            text = if (isFavourite) "已收藏" else "收藏",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = if (isFavourite) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
 
@@ -2373,7 +2501,8 @@ private fun VideoInfoSection(
                                     onDownloadingStateChanged(downloading)
                                     onDownloadProgressChanged(progress)
                                 },
-                                coroutineScope = coroutineScope
+                                coroutineScope = coroutineScope,
+                                isLoggedIn = isLoggedIn
                             )
                         },
                         enabled = isButtonEnabled,
@@ -2613,7 +2742,8 @@ private fun DownloadStatusCard(
                                     onDownloadingStateChanged(downloading)
                                     onDownloadProgressChanged(progress)
                                 },
-                                coroutineScope = coroutineScope
+                                coroutineScope = coroutineScope,
+                                isLoggedIn = isLoggedIn
                             )
                         },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
@@ -2734,8 +2864,14 @@ private fun handleDownload(
     existingTask: DownloadTask?,
     onTaskCreated: (Long) -> Unit,
     onDownloading: (Boolean, Int) -> Unit,
-    coroutineScope: kotlinx.coroutines.CoroutineScope
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    isLoggedIn: Boolean
 ) {
+    if (!isLoggedIn) {
+        Toast.makeText(context, "请先登录", Toast.LENGTH_SHORT).show()
+        return
+    }
+    
     val url = videoUrl ?: video.videoUrl
     
     if (url.isNullOrBlank()) {
