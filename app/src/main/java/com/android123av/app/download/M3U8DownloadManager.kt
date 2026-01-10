@@ -436,6 +436,7 @@ class M3U8DownloadManager(private val context: Context) {
         }
     }
 
+    @Suppress("CIPHER_INSTANCE_WITH_WEAK_MODE")
     private fun decryptSegment(segmentFile: File, key: ByteArray) {
         val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
         val iv = extractIV(segmentFile)
