@@ -75,12 +75,22 @@ fun CategoryScreen(
     
     val coroutineScope = rememberCoroutineScope()
     
-    fun loadVideos() {
+    fun extractSortFromUrl(url: String): String {
+        return url.substringAfter("?sort=", "").substringBefore("&")
+    }
+    
+    fun loadVideos(sortParam: String = "") {
         coroutineScope.launch {
             isLoading = true
             error = null
             try {
-                val url = SiteManager.buildZhUrl(categoryHref)
+                val url = if (sortParam.isNotEmpty()) {
+                    val baseUrl = categoryHref.substringBefore("?")
+                    val separator = if (baseUrl.contains("?")) "&" else "?"
+                    SiteManager.buildZhUrl("$baseUrl${separator}sort=$sortParam")
+                } else {
+                    SiteManager.buildZhUrl(categoryHref)
+                }
                 val (newVideos, paginationInfo) = parseVideosFromHtml(
                     fetchVideosDataWithResponse(url, currentPage).second
                 )
@@ -89,8 +99,12 @@ fun CategoryScreen(
                 hasPrevPage = paginationInfo.hasPrevPage
                 totalPages = paginationInfo.totalPages
                 categoryInfo = Pair(paginationInfo.categoryTitle, paginationInfo.videoCount)
-                sortOptions = paginationInfo.sortOptions
+                
+                val actualSortParam = if (sortParam.isNotEmpty()) sortParam else extractSortFromUrl(categoryHref)
                 currentSort = paginationInfo.currentSort
+                sortOptions = paginationInfo.sortOptions.map { option ->
+                    option.copy(isSelected = option.value == actualSortParam)
+                }
             } catch (e: IOException) {
                 error = "网络连接失败，请检查网络设置"
                 videos = emptyList()
@@ -105,39 +119,13 @@ fun CategoryScreen(
     }
     
     fun loadVideosWithSort(sortValue: String) {
-        coroutineScope.launch {
-            isLoading = true
-            error = null
-            try {
-                val baseUrl = categoryHref.substringBefore("?")
-                val separator = if (baseUrl.contains("?")) "&" else "?"
-                val url = SiteManager.buildZhUrl("$baseUrl${separator}sort=$sortValue")
-                val (newVideos, paginationInfo) = parseVideosFromHtml(
-                    fetchVideosDataWithResponse(url, 1).second
-                )
-                videos = newVideos
-                currentPage = 1
-                hasNextPage = paginationInfo.hasNextPage
-                hasPrevPage = paginationInfo.hasPrevPage
-                totalPages = paginationInfo.totalPages
-                categoryInfo = Pair(paginationInfo.categoryTitle, paginationInfo.videoCount)
-                sortOptions = paginationInfo.sortOptions
-                currentSort = paginationInfo.currentSort
-            } catch (e: IOException) {
-                error = "网络连接失败，请检查网络设置"
-                videos = emptyList()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                error = "加载失败，请稍后重试"
-                videos = emptyList()
-            } finally {
-                isLoading = false
-            }
-        }
+        currentPage = 1
+        loadVideos(sortValue)
     }
     
     LaunchedEffect(currentPage, categoryHref) {
-        loadVideos()
+        val initialSort = extractSortFromUrl(categoryHref)
+        loadVideos(initialSort)
     }
     
     Scaffold(
@@ -187,23 +175,29 @@ fun CategoryScreen(
                                         text = {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
+                                                if (option.isSelected) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp),
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
                                                 Text(
                                                     text = option.title,
                                                     fontWeight = if (option.isSelected) {
                                                         FontWeight.Bold
                                                     } else {
                                                         FontWeight.Normal
+                                                    },
+                                                    color = if (option.isSelected) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurface
                                                     }
                                                 )
-                                                if (option.isSelected) {
-                                                    Icon(
-                                                        Icons.Default.Check,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
                                             }
                                         },
                                         onClick = {
@@ -211,6 +205,15 @@ fun CategoryScreen(
                                                 loadVideosWithSort(option.value)
                                             }
                                             showSortMenu = false
+                                        },
+                                        colors = if (option.isSelected) {
+                                            MenuDefaults.itemColors(
+                                                textColor = MaterialTheme.colorScheme.primary,
+                                                leadingIconColor = MaterialTheme.colorScheme.primary,
+                                                trailingIconColor = MaterialTheme.colorScheme.primary
+                                            )
+                                        } else {
+                                            MenuDefaults.itemColors()
                                         }
                                     )
                                 }
