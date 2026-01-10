@@ -12,44 +12,72 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.android123av.app.components.*
 import com.android123av.app.models.Video
 import com.android123av.app.models.ViewMode
 import com.android123av.app.network.fetchVideosDataWithResponse
 import com.android123av.app.network.parseVideosFromHtml
+import com.android123av.app.network.searchVideos
+import com.android123av.app.network.SiteManager
+import com.android123av.app.state.SearchHistoryManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 
 enum class SortOption(val displayName: String, val param: String) {
     RELEASE_DATE("发布日期", "release_date"),
@@ -79,19 +107,87 @@ fun HomeScreen(
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
     var refreshTrigger by remember { mutableStateOf(0) }
     var selectedSortOption by remember { mutableStateOf(SortOption.RELEASE_DATE) }
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    var hasSearched by remember { mutableStateOf(false) }
+    var searchCurrentPage by remember { mutableStateOf(1) }
+    var searchTotalPages by remember { mutableStateOf(1) }
+    var searchTotalResults by remember { mutableStateOf(0) }
+    var isEditingHistory by remember { mutableStateOf(false) }
+    var isHistoryExpanded by remember { mutableStateOf(false) }
+
+    val searchHistory by remember { derivedStateOf { SearchHistoryManager.searchHistory } }
+
+    val coroutineScope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
+    var isFocused by remember { mutableStateOf(false) }
 
     fun getCategoryUrl(category: String): String {
         return when (category) {
-            "新发布" -> "https://123av.com/zh/dm9/new-release"
-            "最近更新" -> "https://123av.com/zh/dm9/recent-update"
-            "正在观看" -> "https://123av.com/zh/dm9/trending"
-            "未审查" -> "https://123av.com/zh/dm9/uncensored?sort=${selectedSortOption.param}"
-            else -> "https://123av.com/zh/dm9"
+            "新发布" -> SiteManager.buildZhUrl("dm9/new-release")
+            "最近更新" -> SiteManager.buildZhUrl("dm9/recent-update")
+            "正在观看" -> SiteManager.buildZhUrl("dm9/trending")
+            "未审查" -> SiteManager.buildZhUrl("dm9/uncensored?sort=${selectedSortOption.param}")
+            else -> SiteManager.buildZhUrl("dm9")
         }
     }
 
     fun getUncensoredSortUrl(sortOption: SortOption): String {
-        return "https://123av.com/zh/dm9/uncensored?sort=${sortOption.param}"
+        return SiteManager.buildZhUrl("dm9/uncensored?sort=${sortOption.param}")
+    }
+
+    suspend fun performSearch(query: String, page: Int = 1) {
+        if (query.isEmpty()) return
+
+        try {
+            withContext(Dispatchers.Main) {
+                isSearching = true
+                searchError = null
+                hasSearched = true
+            }
+
+            val (results, paginationInfo) = searchVideos(query, page)
+
+            withContext(Dispatchers.Main) {
+                searchResults = results
+                searchCurrentPage = paginationInfo.currentPage
+                searchTotalPages = paginationInfo.totalPages
+                searchTotalResults = paginationInfo.totalResults
+                isSearching = false
+                if (page == 1) {
+                    SearchHistoryManager.addSearchHistory(query)
+                }
+            }
+        } catch (e: IOException) {
+            withContext(Dispatchers.Main) {
+                searchError = "网络连接失败，请检查网络设置"
+                isSearching = false
+                searchResults = emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            withContext(Dispatchers.Main) {
+                searchError = "搜索失败，请稍后重试"
+                isSearching = false
+                searchResults = emptyList()
+            }
+        }
+    }
+
+    fun performManualSearch(query: String) {
+        if (query.isEmpty()) {
+            searchResults = emptyList()
+            searchError = null
+            hasSearched = false
+            return
+        }
+
+        coroutineScope.launch {
+            performSearch(query)
+        }
     }
 
     LaunchedEffect(currentPage, selectedCategory, refreshTrigger, selectedSortOption) {
@@ -171,6 +267,12 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showSearchDialog = true }) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "搜索",
+                        )
+                    }
                     IconButton(onClick = {
                         viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
                     }) {
@@ -280,6 +382,62 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showSearchDialog) {
+        SearchDialog(
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onSearch = { 
+                performManualSearch(searchQuery)
+            },
+            onDismiss = { 
+                showSearchDialog = false
+                searchQuery = ""
+                searchResults = emptyList()
+                searchError = null
+                hasSearched = false
+                searchTotalResults = 0
+                isEditingHistory = false
+            },
+            searchResults = searchResults,
+            isSearching = isSearching,
+            searchError = searchError,
+            hasSearched = hasSearched,
+            onVideoClick = onVideoClick,
+            searchHistory = searchHistory,
+            onHistoryClick = { query ->
+                searchQuery = query
+                performManualSearch(query)
+            },
+            focusRequester = focusRequester,
+            isFocused = isFocused,
+            onFocusChanged = { isFocused = it },
+            onClear = {
+                searchQuery = ""
+                searchResults = emptyList()
+                searchError = null
+                hasSearched = false
+                searchTotalResults = 0
+            },
+            currentPage = searchCurrentPage,
+            totalPages = searchTotalPages,
+            totalResults = searchTotalResults,
+            onPageChange = { page ->
+                coroutineScope.launch {
+                    performSearch(searchQuery, page)
+                }
+            },
+            isEditingHistory = isEditingHistory,
+            onToggleEditMode = { isEditingHistory = !isEditingHistory },
+            onDeleteHistory = { SearchHistoryManager.removeSearchHistory(it) },
+            onClearAllHistory = { 
+                SearchHistoryManager.clearSearchHistory()
+                isEditingHistory = false
+            },
+            isHistoryExpanded = isHistoryExpanded,
+            onToggleHistoryExpanded = { isHistoryExpanded = !isHistoryExpanded }
+        )
     }
 }
 
@@ -558,6 +716,434 @@ private fun SortOptionsBar(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchDialog(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onDismiss: () -> Unit,
+    searchResults: List<Video>,
+    isSearching: Boolean,
+    searchError: String?,
+    hasSearched: Boolean,
+    onVideoClick: (Video) -> Unit,
+    searchHistory: List<String>,
+    onHistoryClick: (String) -> Unit,
+    focusRequester: FocusRequester,
+    isFocused: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+    onClear: () -> Unit,
+    currentPage: Int,
+    totalPages: Int,
+    totalResults: Int,
+    onPageChange: (Int) -> Unit,
+    isEditingHistory: Boolean,
+    onToggleEditMode: () -> Unit,
+    onDeleteHistory: (String) -> Unit,
+    onClearAllHistory: () -> Unit,
+    isHistoryExpanded: Boolean,
+    onToggleHistoryExpanded: () -> Unit
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            usePlatformDefaultWidth = false
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 850.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "搜索视频",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "关闭")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    TextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        placeholder = {
+                            Text(
+                                "输入关键词搜索",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { onFocusChanged(it.isFocused) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "搜索",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = onClear) {
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = "清除",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            imeAction = ImeAction.Search
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                keyboardController?.hide()
+                                onSearch()
+                            }
+                        ),
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (hasSearched && query.isNotEmpty()) {
+                    Text(
+                        text = if (totalResults > 0) {
+                            "找到 $totalResults 个结果"
+                        } else {
+                            "未找到搜索结果"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                if (searchHistory.isNotEmpty() && !hasSearched && query.isEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "搜索历史",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isEditingHistory) {
+                                TextButton(
+                                    onClick = onClearAllHistory,
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text(
+                                        text = "全部删除",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            
+                            if (searchHistory.size > 6) {
+                                IconButton(
+                                    onClick = onToggleHistoryExpanded,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isHistoryExpanded) {
+                                            Icons.Default.KeyboardArrowUp
+                                        } else {
+                                            Icons.Default.KeyboardArrowDown
+                                        },
+                                        contentDescription = if (isHistoryExpanded) "收起" else "展开",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            
+                            IconButton(
+                                onClick = onToggleEditMode,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isEditingHistory) {
+                                        Icons.Default.Done
+                                    } else {
+                                        Icons.Default.Delete
+                                    },
+                                    contentDescription = if (isEditingHistory) "完成" else "删除",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val displayHistory = if (isHistoryExpanded || searchHistory.size <= 6) {
+                        searchHistory
+                    } else {
+                        searchHistory.take(6)
+                    }
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.heightIn(max = 160.dp)
+                    ) {
+                        items(displayHistory.chunked(3)) { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                rowItems.forEach { historyItem ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        border = BorderStroke(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outline
+                                        ),
+                                        modifier = Modifier
+                                            .height(32.dp)
+                                            .weight(1f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                .heightIn(min = 24.dp)
+                                                .fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = historyItem,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clickable(
+                                                        enabled = !isEditingHistory,
+                                                        onClick = { onHistoryClick(historyItem) }
+                                                    )
+                                            )
+                                            
+                                            if (isEditingHistory) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(20.dp)
+                                                        .clickable { onDeleteHistory(historyItem) },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Close,
+                                                        contentDescription = "删除",
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                repeat(3 - rowItems.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    when {
+                        isSearching -> {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                        searchError != null -> {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Error,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Text(
+                                        text = searchError!!,
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                        searchResults.isNotEmpty() -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(searchResults, key = { it.id }) { video ->
+                                        VideoItem(
+                                            video = video,
+                                            onClick = { onVideoClick(video) }
+                                        )
+                                    }
+                                }
+
+                                if (totalPages > 1) {
+                                    SearchPagination(
+                                        currentPage = currentPage,
+                                        totalPages = totalPages,
+                                        onPageChange = onPageChange,
+                                        isLoading = isSearching
+                                    )
+                                }
+                            }
+                        }
+                        hasSearched && query.isNotEmpty() -> {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Text(
+                                        text = "未找到搜索结果",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchPagination(
+    currentPage: Int,
+    totalPages: Int,
+    onPageChange: (Int) -> Unit,
+    isLoading: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = { if (currentPage > 1) onPageChange(currentPage - 1) },
+            enabled = currentPage > 1 && !isLoading
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "上一页"
+            )
+        }
+
+        Text(
+            text = "$currentPage / $totalPages",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        IconButton(
+            onClick = { if (currentPage < totalPages) onPageChange(currentPage + 1) },
+            enabled = currentPage < totalPages && !isLoading
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "下一页"
+            )
         }
     }
 }

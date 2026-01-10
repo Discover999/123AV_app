@@ -951,14 +951,21 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     return Pair(videos, paginationInfo)
 }
 
- suspend fun searchVideos(query: String, page: Int = 1): List<Video> = withContext(Dispatchers.IO) {
-     if (query.isBlank()) return@withContext emptyList()
-     
-     val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-     val searchUrl = SiteManager.buildZhUrl("search?keyword=$encodedQuery")
-     
-     fetchVideosData(searchUrl, page)
- }
+ suspend fun searchVideos(query: String, page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
+    if (query.isBlank()) return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+    
+    val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+    val searchUrl = SiteManager.buildZhUrl("search?keyword=$encodedQuery")
+    
+    fetchVideosDataWithResponse(searchUrl, page).let { (videos, html) ->
+        val paginationInfo = if (html.isNotEmpty()) {
+            parsePaginationInfo(Jsoup.parse(html))
+        } else {
+            PaginationInfo(1, 1, false, false)
+        }
+        Pair(videos, paginationInfo)
+    }
+}
 
 suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
@@ -1053,11 +1060,19 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     val hasNextPage = doc.select("li.page-item a.page-link[rel*=next]").isNotEmpty()
     val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
 
+    val totalResultsText = doc.selectFirst("div.text-muted")?.text() ?: ""
+    val totalResults = totalResultsText
+        .replace(",", "")
+        .replace("视频", "")
+        .replace(" ", "")
+        .toIntOrNull() ?: 0
+
     return PaginationInfo(
         currentPage = currentPage,
         totalPages = totalPages,
         hasNextPage = hasNextPage || currentPage < totalPages,
-        hasPrevPage = hasPrevPage || currentPage > 1
+        hasPrevPage = hasPrevPage || currentPage > 1,
+        totalResults = totalResults
     )
 }
 

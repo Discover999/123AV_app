@@ -102,7 +102,8 @@ data class PaginationInfo(
     val currentPage: Int,
     val totalPages: Int,
     val hasNextPage: Boolean,
-    val hasPrevPage: Boolean
+    val hasPrevPage: Boolean,
+    val totalResults: Int = 0
 )
 
 // 视图模式枚举
