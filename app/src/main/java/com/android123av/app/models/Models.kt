@@ -103,7 +103,9 @@ data class PaginationInfo(
     val totalPages: Int,
     val hasNextPage: Boolean,
     val hasPrevPage: Boolean,
-    val totalResults: Int = 0
+    val totalResults: Int = 0,
+    val categoryTitle: String = "",
+    val videoCount: String = ""
 )
 
 // 视图模式枚举

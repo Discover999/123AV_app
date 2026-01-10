@@ -46,6 +46,13 @@
             android:theme="@style/Theme.MyApplication"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize" />
         <activity
+            android:name=".CategoryActivity"
+            android:exported="false"
+            android:label="分类"
+            android:theme="@style/Theme.MyApplication"
+            android:parentActivityName=".MainActivity"
+            android:enableOnBackInvokedCallback="true" />
+        <activity
             android:name=".LoginActivity"
             android:exported="false"
             android:label="登录"

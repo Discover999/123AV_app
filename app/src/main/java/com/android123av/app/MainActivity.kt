@@ -89,36 +89,21 @@ fun MyApplicationApp() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (appState.categoryNavigation.value == null) {
-                AppNavigationBar(
-                    currentDestination = appState.currentDestination.value,
-                    onNavigateTo = { appState.navigateTo(it) }
-                )
-            }
+            AppNavigationBar(
+                currentDestination = appState.currentDestination.value,
+                onNavigateTo = { appState.navigateTo(it) }
+            )
         }
     ) {
-        when {
-            appState.categoryNavigation.value != null -> {
-                val categoryNav = appState.categoryNavigation.value!!
-                CategoryScreen(
-                    categoryTitle = categoryNav.title,
-                    categoryHref = categoryNav.href,
-                    onBack = { appState.navigateBackFromCategory() },
-                    onVideoClick = { video ->
-                        val intent = Intent(context, VideoPlayerActivity::class.java)
-                        intent.putExtra("video", video)
-                        context.startActivity(intent)
-                    }
-                )
-            }
-            appState.currentDestination.value == AppDestinations.HOME -> HomeScreen(
+        when (appState.currentDestination.value) {
+            AppDestinations.HOME -> HomeScreen(
                 onVideoClick = { video ->
                     val intent = Intent(context, VideoPlayerActivity::class.java)
                     intent.putExtra("video", video)
                     context.startActivity(intent)
                 }
             )
-            appState.currentDestination.value == AppDestinations.FAVORITES -> FavoritesScreen(
+            AppDestinations.FAVORITES -> FavoritesScreen(
                 modifier = Modifier.padding(it),
                 onVideoClick = { video ->
                     val intent = Intent(context, VideoPlayerActivity::class.java)
@@ -126,12 +111,15 @@ fun MyApplicationApp() {
                     context.startActivity(intent)
                 }
             )
-            appState.currentDestination.value == AppDestinations.SEARCH -> AllVideo(
+            AppDestinations.SEARCH -> AllVideo(
                 onNavigateToCategory = { title, href ->
-                    appState.navigateToCategory(title, href)
+                    val intent = Intent(context, CategoryActivity::class.java)
+                    intent.putExtra("categoryTitle", title)
+                    intent.putExtra("categoryHref", href)
+                    context.startActivity(intent)
                 }
             )
-            appState.currentDestination.value == AppDestinations.PROFILE -> ProfileScreen(
+            AppDestinations.PROFILE -> ProfileScreen(
                 context = context,
                 isLoggedIn = userState.isLoggedIn,
                 onLogout = {

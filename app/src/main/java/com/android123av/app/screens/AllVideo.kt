@@ -169,7 +169,7 @@ fun AllVideo(
                             MenuSectionCard(
                                 section = section,
                                 onItemClick = { item ->
-                                    onNavigateToCategory(section.title, item.href)
+                                    onNavigateToCategory(item.title, item.href)
                                 }
                             )
                         }

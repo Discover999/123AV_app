@@ -63,6 +63,7 @@ fun CategoryScreen(
     var totalPages by remember { mutableIntStateOf(1) }
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
     var error by remember { mutableStateOf<String?>(null) }
+    var categoryInfo by remember { mutableStateOf(Pair("", "")) }
     
     val coroutineScope = rememberCoroutineScope()
     
@@ -79,6 +80,7 @@ fun CategoryScreen(
                 hasNextPage = paginationInfo.hasNextPage
                 hasPrevPage = paginationInfo.hasPrevPage
                 totalPages = paginationInfo.totalPages
+                categoryInfo = Pair(paginationInfo.categoryTitle, paginationInfo.videoCount)
             } catch (e: IOException) {
                 error = "网络连接失败，请检查网络设置"
                 videos = emptyList()
@@ -100,10 +102,19 @@ fun CategoryScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        categoryTitle,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            categoryTitle,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (categoryInfo.second.isNotEmpty()) {
+                            Text(
+                                text = categoryInfo.second,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

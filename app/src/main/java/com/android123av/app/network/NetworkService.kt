@@ -1060,19 +1060,26 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     val hasNextPage = doc.select("li.page-item a.page-link[rel*=next]").isNotEmpty()
     val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
 
-    val totalResultsText = doc.selectFirst("div.text-muted")?.text() ?: ""
-    val totalResults = totalResultsText
+    val titleElement = doc.selectFirst("div.title h2")
+    val categoryTitle = titleElement?.text() ?: ""
+
+    val videoCountElement = doc.selectFirst("div.title div.text-muted")
+    val videoCount = videoCountElement?.text() ?: ""
+
+    val totalResultsText = videoCount
         .replace(",", "")
         .replace("视频", "")
         .replace(" ", "")
-        .toIntOrNull() ?: 0
+    val totalResults = totalResultsText.toIntOrNull() ?: 0
 
     return PaginationInfo(
         currentPage = currentPage,
         totalPages = totalPages,
         hasNextPage = hasNextPage || currentPage < totalPages,
         hasPrevPage = hasPrevPage || currentPage > 1,
-        totalResults = totalResults
+        totalResults = totalResults,
+        categoryTitle = categoryTitle,
+        videoCount = videoCount
     )
 }
 
@@ -1083,7 +1090,7 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
         
         val request = Request.Builder()
             .url(videoDetailUrl)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 9 Build/AD1A.240411.003.A5; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.54 Mobile Safari/537.36")
+            .header("User-Agent", USER_AGENT)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             .header("Referer", "$currentBaseUrl/")
