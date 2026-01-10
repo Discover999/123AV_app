@@ -76,7 +76,7 @@ fun parseNavigationMenu(html: String): List<MenuSection> {
                 }
             }
             
-            if (title.isNotEmpty() && items.isNotEmpty()) {
+            if (title.isNotEmpty() && items.isNotEmpty() && !title.contains("更多站点", ignoreCase = true)) {
                 menuSections.add(MenuSection(title, items))
             }
         }

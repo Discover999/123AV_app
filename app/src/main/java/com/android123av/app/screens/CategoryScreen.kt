@@ -13,6 +13,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.android123av.app.components.*
@@ -144,7 +145,11 @@ fun CategoryScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(
+                    top = paddingValues.calculateTopPadding(),
+                    start = paddingValues.calculateStartPadding(LocalLayoutDirection.current),
+                    end = paddingValues.calculateEndPadding(LocalLayoutDirection.current)
+                )
         ) {
             PullToRefreshBox(
                 isRefreshing = isLoading && videos.isNotEmpty(),
@@ -206,7 +211,8 @@ fun CategoryScreen(
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- },
-                                        onPageSelected = { page -> currentPage = page }
+                                        onPageSelected = { page -> currentPage = page },
+                                        bottomPadding = 16.dp
                                     )
                                 }
                                 ViewMode.GRID -> {
@@ -221,7 +227,8 @@ fun CategoryScreen(
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- },
-                                        onPageSelected = { page -> currentPage = page }
+                                        onPageSelected = { page -> currentPage = page },
+                                        bottomPadding = 16.dp
                                     )
                                 }
                             }

@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.android123av.app.components.*
@@ -469,7 +470,8 @@ internal fun VideoListContent(
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit,
-    onPageSelected: (Int) -> Unit
+    onPageSelected: (Int) -> Unit,
+    bottomPadding: Dp = 80.dp
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -478,7 +480,7 @@ internal fun VideoListContent(
                 start = 16.dp,
                 top = 16.dp,
                 end = 16.dp,
-                bottom = 80.dp
+                bottom = bottomPadding
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -518,7 +520,8 @@ internal fun VideoGridContent(
     onVideoClick: (Video) -> Unit,
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit,
-    onPageSelected: (Int) -> Unit
+    onPageSelected: (Int) -> Unit,
+    bottomPadding: Dp = 80.dp
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -528,7 +531,7 @@ internal fun VideoGridContent(
                 start = 16.dp,
                 top = 16.dp,
                 end = 16.dp,
-                bottom = 80.dp
+                bottom = bottomPadding
             ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
