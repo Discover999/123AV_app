@@ -107,7 +107,8 @@ data class PaginationInfo(
     val categoryTitle: String = "",
     val videoCount: String = "",
     val currentSort: String = "",
-    val sortOptions: List<SortOption> = emptyList()
+    val sortOptions: List<SortOption> = emptyList(),
+    val actressDetail: ActressDetail? = null
 )
 
 // 排序选项数据类
@@ -160,6 +161,23 @@ data class MenuItem(
 data class MenuSection(
     val title: String,
     val items: List<MenuItem>
+)
+
+data class Actress(
+    val id: String,
+    val name: String,
+    val avatarUrl: String,
+    val videoCount: Int,
+    val birthday: String = ""
+)
+
+data class ActressDetail(
+    val name: String,
+    val avatarUrl: String = "",
+    val birthday: String = "",
+    val height: String = "",
+    val measurements: String = "",
+    val videoCount: Int = 0
 )
 
 

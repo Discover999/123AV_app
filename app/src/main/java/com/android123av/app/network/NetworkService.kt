@@ -1061,7 +1061,12 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
 
     val titleElement = doc.selectFirst("div.title h2")
-    val categoryTitle = titleElement?.text() ?: ""
+    var categoryTitle = titleElement?.text() ?: ""
+    
+    if (categoryTitle.isEmpty()) {
+        val h1Element = doc.selectFirst("h1")
+        categoryTitle = h1Element?.text() ?: ""
+    }
 
     val videoCountElement = doc.selectFirst("div.title div.text-muted")
     val videoCount = videoCountElement?.text() ?: ""
@@ -1073,6 +1078,50 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     val totalResults = totalResultsText.toIntOrNull() ?: 0
 
     val currentSort = doc.selectFirst("div.dropdown.show span.text-muted + span")?.text() ?: ""
+    
+    val actressDetail = try {
+        val actressDetailElement = doc.selectFirst("div.detail.ml-4.text-left.title")
+        val avatarElement = doc.selectFirst("div.avatar img")
+        val avatarUrl = avatarElement?.attr("src")?.trim() ?: ""
+        
+        if (actressDetailElement != null) {
+            val name = actressDetailElement.selectFirst("h3")?.text()?.trim() ?: ""
+            val textMutedElements = actressDetailElement.select("div.text-muted")
+            var birthday = ""
+            var height = ""
+            var measurements = ""
+            var videoCountActress = 0
+            
+            textMutedElements.forEachIndexed { index, element ->
+                val text = element.text().trim()
+                if (text.contains("岁")) {
+                    birthday = text
+                } else if (text.contains("cm")) {
+                    val parts = text.split("/")
+                    if (parts.isNotEmpty()) {
+                        height = parts[0].trim()
+                    }
+                    if (parts.size > 1) {
+                        measurements = parts[1].trim()
+                    }
+                } else if (text.contains("视频")) {
+                    val countText = text.replace("[^0-9]".toRegex(), "")
+                    videoCountActress = countText.toIntOrNull() ?: 0
+                }
+            }
+            
+            if (name.isNotEmpty()) {
+                com.android123av.app.models.ActressDetail(name, avatarUrl, birthday, height, measurements, videoCountActress)
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
     
     val sortOptions = mutableListOf<com.android123av.app.models.SortOption>()
     
@@ -1106,7 +1155,8 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
         categoryTitle = categoryTitle,
         videoCount = videoCount,
         currentSort = currentSort,
-        sortOptions = sortOptions
+        sortOptions = sortOptions,
+        actressDetail = actressDetail
     )
 }
 
@@ -1227,6 +1277,44 @@ suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSec
         } catch (e: Exception) {
             e.printStackTrace()
             Pair(emptyList(), "Error fetching navigation menu: ${e.message}")
+        }
+    }
+}
+
+suspend fun fetchActresses(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Actress>, PaginationInfo> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val fullUrl = if (page > 1) {
+                if (url.contains("?")) {
+                    "$url&page=$page"
+                } else {
+                    "$url?page=$page"
+                }
+            } else {
+                url
+            }
+            
+            android.util.Log.d("FetchActresses", "Fetching actresses from URL: $fullUrl")
+            val request = Request.Builder()
+                .url(fullUrl)
+                .headers(commonHeaders())
+                .build()
+            
+            val response = okHttpClient.newCall(request).execute()
+            android.util.Log.d("FetchActresses", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
+            
+            if (response.isSuccessful) {
+                val html = response.body?.string() ?: ""
+                android.util.Log.d("FetchActresses", "HTML length: ${html.length}")
+                return@withContext parseActressesFromHtml(html)
+            } else {
+                android.util.Log.e("FetchActresses", "Request failed with code: ${response.code}")
+                return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FetchActresses", "Error fetching actresses", e)
+            e.printStackTrace()
+            return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
     }
 }
