@@ -1072,6 +1072,31 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
         .replace(" ", "")
     val totalResults = totalResultsText.toIntOrNull() ?: 0
 
+    val currentSort = doc.selectFirst("div.dropdown.show span.text-muted + span")?.text() ?: ""
+    
+    val sortOptions = mutableListOf<com.android123av.app.models.SortOption>()
+    
+    val sortDropdowns = doc.select("div.dropdown-menu")
+    for (sortDropdown in sortDropdowns) {
+        val dropdownParent = sortDropdown.parent()
+        val dropdownLabel = dropdownParent?.select("span.text-muted")?.firstOrNull()?.text() ?: ""
+        
+        if (dropdownLabel.contains("排序方式")) {
+            val sortItems = sortDropdown.select("a.dropdown-item")
+            sortItems.forEach { item ->
+                val href = item.attr("href")
+                if (href.contains("?sort=")) {
+                    val title = item.selectFirst("span")?.text() ?: ""
+                    val sortValue = href.substringAfter("?sort=").substringBefore("&")
+                    if (title.isNotEmpty() && sortValue.isNotEmpty()) {
+                        sortOptions.add(com.android123av.app.models.SortOption(title, sortValue, title == currentSort))
+                    }
+                }
+            }
+            break
+        }
+    }
+
     return PaginationInfo(
         currentPage = currentPage,
         totalPages = totalPages,
@@ -1079,7 +1104,9 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
         hasPrevPage = hasPrevPage || currentPage > 1,
         totalResults = totalResults,
         categoryTitle = categoryTitle,
-        videoCount = videoCount
+        videoCount = videoCount,
+        currentSort = currentSort,
+        sortOptions = sortOptions
     )
 }
 

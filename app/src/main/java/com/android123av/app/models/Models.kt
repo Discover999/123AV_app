@@ -105,7 +105,16 @@ data class PaginationInfo(
     val hasPrevPage: Boolean,
     val totalResults: Int = 0,
     val categoryTitle: String = "",
-    val videoCount: String = ""
+    val videoCount: String = "",
+    val currentSort: String = "",
+    val sortOptions: List<SortOption> = emptyList()
+)
+
+// 排序选项数据类
+data class SortOption(
+    val title: String,
+    val value: String,
+    val isSelected: Boolean = false
 )
 
 // 视图模式枚举

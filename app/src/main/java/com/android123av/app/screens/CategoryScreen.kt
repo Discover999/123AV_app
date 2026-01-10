@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -16,9 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import com.android123av.app.components.*
 import com.android123av.app.models.Video
 import com.android123av.app.models.ViewMode
+import com.android123av.app.models.SortOption
 import com.android123av.app.network.fetchVideosDataWithResponse
 import com.android123av.app.network.parseVideosFromHtml
 import com.android123av.app.network.SiteManager
@@ -65,6 +69,9 @@ fun CategoryScreen(
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
     var error by remember { mutableStateOf<String?>(null) }
     var categoryInfo by remember { mutableStateOf(Pair("", "")) }
+    var sortOptions by remember { mutableStateOf<List<SortOption>>(emptyList()) }
+    var currentSort by remember { mutableStateOf("") }
+    var showSortMenu by remember { mutableStateOf(false) }
     
     val coroutineScope = rememberCoroutineScope()
     
@@ -82,6 +89,40 @@ fun CategoryScreen(
                 hasPrevPage = paginationInfo.hasPrevPage
                 totalPages = paginationInfo.totalPages
                 categoryInfo = Pair(paginationInfo.categoryTitle, paginationInfo.videoCount)
+                sortOptions = paginationInfo.sortOptions
+                currentSort = paginationInfo.currentSort
+            } catch (e: IOException) {
+                error = "网络连接失败，请检查网络设置"
+                videos = emptyList()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                error = "加载失败，请稍后重试"
+                videos = emptyList()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    fun loadVideosWithSort(sortValue: String) {
+        coroutineScope.launch {
+            isLoading = true
+            error = null
+            try {
+                val baseUrl = categoryHref.substringBefore("?")
+                val separator = if (baseUrl.contains("?")) "&" else "?"
+                val url = SiteManager.buildZhUrl("$baseUrl${separator}sort=$sortValue")
+                val (newVideos, paginationInfo) = parseVideosFromHtml(
+                    fetchVideosDataWithResponse(url, 1).second
+                )
+                videos = newVideos
+                currentPage = 1
+                hasNextPage = paginationInfo.hasNextPage
+                hasPrevPage = paginationInfo.hasPrevPage
+                totalPages = paginationInfo.totalPages
+                categoryInfo = Pair(paginationInfo.categoryTitle, paginationInfo.videoCount)
+                sortOptions = paginationInfo.sortOptions
+                currentSort = paginationInfo.currentSort
             } catch (e: IOException) {
                 error = "网络连接失败，请检查网络设置"
                 videos = emptyList()
@@ -123,6 +164,59 @@ fun CategoryScreen(
                     }
                 },
                 actions = {
+                    if (sortOptions.isNotEmpty()) {
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = "排序",
+                                    tint = if (currentSort.isNotEmpty()) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                                properties = PopupProperties(focusable = true)
+                            ) {
+                                sortOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = option.title,
+                                                    fontWeight = if (option.isSelected) {
+                                                        FontWeight.Bold
+                                                    } else {
+                                                        FontWeight.Normal
+                                                    }
+                                                )
+                                                if (option.isSelected) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            if (!option.isSelected) {
+                                                loadVideosWithSort(option.value)
+                                            }
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                     IconButton(onClick = {
                         viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
                     }) {
