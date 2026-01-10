@@ -458,7 +458,7 @@ private fun LoadingOverlay(isLoading: Boolean) {
 }
 
 @Composable
-private fun VideoListContent(
+internal fun VideoListContent(
     videos: List<Video>,
     currentPage: Int,
     totalPages: Int,
@@ -507,7 +507,7 @@ private fun VideoListContent(
 }
 
 @Composable
-private fun VideoGridContent(
+internal fun VideoGridContent(
     videos: List<Video>,
     currentPage: Int,
     totalPages: Int,
@@ -633,7 +633,7 @@ private fun CategoryChangeLoading() {
     }
 }
 
-private enum class ContentState {
+internal enum class ContentState {
     LOADING, EMPTY, CONTENT, CATEGORY_LOADING
 }
 

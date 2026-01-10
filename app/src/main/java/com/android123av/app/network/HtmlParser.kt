@@ -1,37 +1,30 @@
 package com.android123av.app.network
 
 import com.android123av.app.models.VideoDetails
+import com.android123av.app.models.MenuItem
+import com.android123av.app.models.MenuSection
 import org.jsoup.Jsoup
 
 fun parseVideoDetails(html: String): VideoDetails? {
     return try {
         val doc = Jsoup.parse(html)
         
-        // 解析代码
         val code = doc.selectFirst("span:contains(代码) + span")?.text() ?: ""
         
-        // 解析发布日期
         val releaseDate = doc.selectFirst("span:contains(发布日期) + span")?.text() ?: ""
         
-        // 解析时长
         val duration = doc.selectFirst("span:contains(时长) + span")?.text() ?: ""
         
-        // 解析女演员
         val performer = doc.selectFirst("span:contains(女演员) + span")?.text()?.trim() ?: ""
         
-        // 解析类型
         val genres = doc.select("span.genre a").map { it.text() }
         
-        // 解析制作人
         val maker = doc.selectFirst("span:contains(制作人) + span")?.text() ?: ""
         
-        // 解析标签
         val tags = doc.select("span:contains(标签) + span a").map { it.text() }
         
-        // 解析收藏数
         val favouriteCount = doc.select("span[ref=counter]").firstOrNull()?.text()?.toIntOrNull() ?: 0
         
-        // 解析真实ID（从收藏按钮的v-scope属性中提取）
         val realId = doc.select("button.favourite").firstOrNull()?.attr("v-scope")?.let { vScope ->
             val regex = Regex("Favourite\\('movie',\\s*(\\d+)")
             regex.find(vScope)?.groupValues?.get(1) ?: ""
@@ -51,5 +44,46 @@ fun parseVideoDetails(html: String): VideoDetails? {
     } catch (e: Exception) {
         e.printStackTrace()
         null
+    }
+}
+
+fun parseNavigationMenu(html: String): List<MenuSection> {
+    return try {
+        val doc = Jsoup.parse(html)
+        val menuSections = mutableListOf<MenuSection>()
+        
+        val navElement = doc.selectFirst("div.col-auto.nav-wrap ul#nav")
+        if (navElement == null) {
+            return menuSections
+        }
+        
+        val menuItems = navElement.select("li.has-child")
+        
+        for (menuItem in menuItems) {
+            val titleElement = menuItem.selectFirst("> a")
+            if (titleElement == null) continue
+            
+            val title = titleElement.text().trim()
+            val subMenuList = menuItem.select("> ul > li > a")
+            
+            val items = subMenuList.mapNotNull { subLink ->
+                val itemTitle = subLink.text().trim()
+                val href = subLink.attr("href").trim()
+                if (itemTitle.isNotEmpty() && href.isNotEmpty()) {
+                    MenuItem(itemTitle, href)
+                } else {
+                    null
+                }
+            }
+            
+            if (title.isNotEmpty() && items.isNotEmpty()) {
+                menuSections.add(MenuSection(title, items))
+            }
+        }
+        
+        menuSections
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
     }
 }

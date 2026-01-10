@@ -141,5 +141,15 @@ data class VideoPart(
     }
 }
 
+data class MenuItem(
+    val title: String,
+    val href: String
+)
+
+data class MenuSection(
+    val title: String,
+    val items: List<MenuItem>
+)
+
 
 

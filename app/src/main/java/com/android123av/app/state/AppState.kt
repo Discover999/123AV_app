@@ -7,29 +7,39 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import com.android123av.app.AppDestinations
 
+data class CategoryNavigation(
+    val title: String,
+    val href: String
+)
+
 class AppState(
     initialDestination: AppDestinations = AppDestinations.HOME
 ) {
-    // 当前导航目的地
     val currentDestination: MutableState<AppDestinations> = mutableStateOf(initialDestination)
     
-    // 导航到指定目的地
+    val categoryNavigation: MutableState<CategoryNavigation?> = mutableStateOf(null)
+    
     fun navigateTo(destination: AppDestinations) {
         currentDestination.value = destination
     }
     
-    // 导航到登录页面
     fun navigateToLogin() {
         currentDestination.value = AppDestinations.LOGIN
     }
     
-    // 从登录页面返回
     fun navigateBackFromLogin() {
         currentDestination.value = AppDestinations.PROFILE
     }
     
+    fun navigateToCategory(title: String, href: String) {
+        categoryNavigation.value = CategoryNavigation(title, href)
+    }
+    
+    fun navigateBackFromCategory() {
+        categoryNavigation.value = null
+    }
+    
     companion object {
-        // Saver用于保存和恢复AppState的状态
         val Saver: Saver<AppState, *> = Saver(
             save = { appState ->
                 mapOf(
@@ -45,7 +55,6 @@ class AppState(
     }
 }
 
-// 用于在Composable中记住AppState的函数
 @Composable
 fun rememberAppState(
     initialDestination: AppDestinations = AppDestinations.HOME

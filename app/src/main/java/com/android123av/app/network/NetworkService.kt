@@ -1172,3 +1172,27 @@ suspend fun toggleFavourite(videoId: String, isAdd: Boolean): Boolean = withCont
         return@withContext false
     }
 }
+
+suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSection>, String?> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val url = SiteManager.buildZhUrl("dm9")
+            val request = Request.Builder()
+                .url(url)
+                .headers(commonHeaders())
+                .build()
+            
+            val response = okHttpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val html = response.body?.string() ?: ""
+                val menuSections = parseNavigationMenu(html)
+                Pair(menuSections, null)
+            } else {
+                Pair(emptyList(), "Failed to fetch navigation menu: ${response.code}")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Pair(emptyList(), "Error fetching navigation menu: ${e.message}")
+        }
+    }
+}
