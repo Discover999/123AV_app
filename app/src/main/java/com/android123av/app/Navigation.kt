@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -14,7 +15,7 @@ enum class AppDestinations(
     val icon: ImageVector
 ) {
     HOME("首页", Icons.Default.Home),
-    SEARCH("搜索", Icons.Default.Search),
+    SEARCH("其他", Icons.Default.Menu),
     FAVORITES("收藏", Icons.Default.Favorite),
     PROFILE("我的", Icons.Default.AccountBox),
     VIDEO_PLAYER("视频播放", Icons.Default.PlayArrow),

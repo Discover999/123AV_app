@@ -2,9 +2,9 @@
 
 <div align="center">
 
-![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-7F52FF?logo=kotlin)
-![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2024.02.00-FF6B6B?logo=jetpackcompose)
-![Android SDK](https://img.shields.io/badge/Android%20SDK-34-3DDC84?logo=android)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2024.09.00-FF6B6B?logo=jetpackcompose)
+![Android SDK](https://img.shields.io/badge/Android%20SDK-36-3DDC84?logo=android)
 ![License](https://img.shields.io/badge/License-MIT-FFFFFF)
 
 </div>
@@ -63,14 +63,18 @@
 
 | 类别 | 技术选型 | 版本要求 |
 |------|----------|----------|
-| **开发语言** | Kotlin | 1.9.22 |
-| **UI 框架** | Jetpack Compose | 2024.02.00 |
+| **开发语言** | Kotlin | 2.0.21 |
+| **UI 框架** | Jetpack Compose | 2024.09.00 |
 | **状态管理** | MutableState + StateFlow | - |
-| **网络请求** | OkHttp + Retrofit | 4.12.0 |
+| **网络请求** | OkHttp | 4.12.0 |
 | **HTML 解析** | Jsoup | 1.17.2 |
-| **异步处理** | Kotlin Coroutines | 1.7.3 |
-| **最低 SDK** | Android | 7.0 (API 24) |
-| **目标 SDK** | Android | 14 (API 34) |
+| **JSON 解析** | Gson | 2.10.1 |
+| **视频播放** | AndroidX Media3 (ExoPlayer) | 1.3.1 |
+| **本地存储** | Room Database | 2.8.4 |
+| **图片加载** | Coil | 2.7.0 |
+| **异步处理** | Kotlin Coroutines | - |
+| **最低 SDK** | Android | 11 (API 30) |
+| **目标 SDK** | Android | 14 (API 36) |
 
 ### 🏛️ 分层架构设计
 
@@ -94,7 +98,7 @@
 │  └─────────────┘ └─────────────┘ └─────────────┘      │
 ├─────────────────────────────────────────────────────────┤
 │                   Network Layer                        │
-│          OkHttp + Retrofit + Jsoup + Gson              │
+│              OkHttp + Jsoup + Gson + Media3            │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -105,29 +109,70 @@
 ```
 app/src/main/java/com/android123av/app/
 ├── 📂 components/              # 🎨 可复用 UI 组件库
-│   ├── VideoItem.kt           # 📹 视频列表项组件
+│   ├── CategoryTabs.kt        # 📑 分类标签组件
+│   ├── NavigationComponent.kt # 🧭 导航组件
 │   ├── PaginationComponent.kt # 📄 智能分页组件
-│   └── LoadingSkeleton.kt     # ⚡ 优雅加载骨架屏
-├── 📂 models/                  # 📊 数据模型层
-│   └── Video.kt               # 🎬 视频数据模型
-├── 📂 network/                 # 🌐 网络请求层
-│   ├── NetworkService.kt      # 🔗 网络请求服务
-│   └── ApiEndpoints.kt        # 📍 API 接口定义
-├── 📂 screens/                 # 📱 页面组件层
-│   ├── HomeScreen.kt          # 🏠 首页
-│   ├── FavoritesScreen.kt     # ❤️ 收藏页面
-│   ├── ProfileScreen.kt       # 👤 个人中心
-│   └── SearchScreen.kt        # 🔍 搜索页面
-├── 📂 state/                   # 💾 状态管理层
-│   └── UserStateManager.kt    # 👤 用户状态管理
-├── 📂 ui/theme/                # 🎨 主题配置层
-│   ├── Theme.kt               # 🎯 应用主题
-│   ├── Color.kt               # 🌈 颜色定义
-│   └── Type.kt                # 🔤 字体排版
+│   └── VideoItem.kt          # 📹 视频列表项组件
+├── 📂 constants/              # ⚙️ 常量定义
+│   └── PlayerConstants.kt    # 🎬 播放器常量
 ├── 📂 download/                # ⬇️ 下载管理层
-│   └── M3U8DownloadManager    # 📹 M3U8 下载管理
+│   ├── CachedVideoDetails.kt  # 💾 缓存视频详情
+│   ├── DownloadDatabase.kt    # 🗄️ 下载数据库
+│   ├── DownloadModels.kt      # 📊 下载任务模型
+│   ├── M3U8DownloadManager.kt # 🎥 M3U8 下载管理
+│   └── VideoDetailsCacheManager.kt # 📋 视频详情缓存管理
+├── 📂 models/                  # 📊 数据模型层
+│   ├── Models.kt              # 🎬 视频数据模型
+│   ├── PlayerState.kt         # 🎮 播放器状态
+│   └── VideoDetails.kt        # 📋 视频详情模型
+├── 📂 network/                 # 🌐 网络请求层
+│   ├── HtmlParser.kt          # 🔍 HTML 解析器
+│   ├── NetworkService.kt      # 🔗 网络请求服务
+│   ├── PersistentCookieJar.kt  # 🍪 Cookie 持久化
+│   └── SiteManager.kt         # 🌍 站点管理
+├── 📂 player/                  # 🎬 播放器层
+│   └── ExoPlayerManager.kt    # 🎥 ExoPlayer 管理器
+├── 📂 repository/              # 📦 数据仓库层
+│   └── VideoRepository.kt     # 🎬 视频数据仓库
+├── 📂 screens/                 # 📱 页面组件层
+│   ├── AllVideo.kt            # 🔍 全部视频页面
+│   ├── DownloadsScreen.kt     # ⬇️ 下载页面
+│   ├── FavoritesScreen.kt     # ❤️ 收藏页面
+│   ├── HelpScreen.kt          # ❓ 帮助页面
+│   ├── HomeScreen.kt          # 🏠 首页
+│   ├── NetworkTestScreen.kt   # 🌐 网络测试页面
+│   ├── ProfileScreen.kt       # 👤 个人中心
+│   ├── SettingsScreen.kt      # ⚙️ 设置页面
+│   ├── VideoPlayerScreen.kt   # 🎬 视频播放页面
+│   └── VideoPlayerScreenRefactored.kt # 🎬 播放器重构版本
+├── 📂 state/                   # 💾 状态管理层
+│   ├── AppState.kt            # 📱 应用状态
+│   ├── DownloadPathManager.kt # 📁 下载路径管理
+│   ├── SearchHistoryManager.kt # 🔍 搜索历史管理
+│   ├── ThemeStateManager.kt   # 🎨 主题状态管理
+│   ├── UserState.kt           # 👤 用户状态
+│   └── UserStateManager.kt    # 👤 用户状态管理
+├── 📂 ui/                      # 🎨 UI 组件层
+│   ├── components/            # 🧩 UI 子组件
+│   │   ├── LoadingState.kt    # ⏳ 加载状态
+│   │   ├── PlayerControls.kt  # 🎮 播放器控件
+│   │   ├── VideoErrorState.kt # ❌ 视频错误状态
+│   │   └── VideoInfoPanel.kt  # 📋 视频信息面板
+│   └── theme/                 # 🎨 主题配置
+│       ├── Color.kt           # 🌈 颜色定义
+│       ├── Theme.kt           # 🎯 应用主题
+│       └── Type.kt            # 🔤 字体排版
+├── 📂 viewmodel/               # 🧠 ViewModel 层
+│   ├── VideoPlayerViewModel.kt # 🎬 播放器 ViewModel
+│   └── VideoPlayerViewModelFactory.kt # 🏭 ViewModel 工厂
 ├── MainActivity.kt            # 🚀 应用入口
-└── Navigation.kt              # 🧭 导航配置
+├── Navigation.kt              # 🧭 导航配置
+├── DownloadsActivity.kt       # ⬇️ 下载 Activity
+├── HelpActivity.kt            # ❓ 帮助 Activity
+├── LoginActivity.kt           # 🔐 登录 Activity
+├── NetworkTestActivity.kt     # 🌐 网络测试 Activity
+├── SettingsActivity.kt       # ⚙️ 设置 Activity
+└── VideoPlayerActivity.kt    # 🎬 播放器 Activity
 ```
 
 ---
@@ -138,38 +183,65 @@ app/src/main/java/com/android123av/app/
 
 | 工具 | 版本要求 | 说明 |
 |------|----------|------|
-| **Android Studio** | Hedgehog (2023.1.1)+ | 官方 IDE |
-| **JDK** | 17 | Java 开发套件 |
-| **Gradle** | 8.4+ | 构建工具 |
-| **Android SDK** | 34 | 编译目标 SDK |
+| **Android Studio** | Ladybug (2024.2.1)+ | 官方 IDE |
+| **JDK** | 11 | Java 开发套件 |
+| **Gradle** | 8.13.2+ | 构建工具 |
+| **Android SDK** | 36 | 编译目标 SDK |
+| **Kotlin** | 2.0.21 | 编程语言 |
+| **KSP** | - | Kotlin 符号处理器 |
 
 ### 📦 核心依赖配置
 
-项目采用 Gradle Kotlin DSL 进行现代化构建配置：
+项目采用 Gradle Kotlin DSL 与版本目录（`libs.versions.toml`）进行现代化构建配置：
 
 ```kotlin
 // 🚀 Core
-implementation("androidx.core:core-ktx:1.12.0")
-implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+implementation("androidx.core:core-ktx:1.17.0")
+implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
+implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
+implementation("androidx.activity:activity-compose:1.11.0")
 
 // 🎨 Compose BOM
-implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+implementation(platform("androidx.compose:compose-bom:2024.09.00"))
 implementation("androidx.compose.ui:ui")
 implementation("androidx.compose.ui:ui-graphics")
 implementation("androidx.compose.ui:ui-tooling-preview")
 implementation("androidx.compose.material3:material3")
+implementation("androidx.compose.material3:material3-adaptive-navigation-suite")
+implementation("androidx.compose.material3:material3-pullrefresh")
+implementation("androidx.compose.material:material")
 implementation("androidx.compose.material:material-icons-extended")
+implementation("androidx.compose.foundation:foundation:1.10.0")
+implementation("androidx.compose.animation:animation:1.10.0")
 
 // 🧭 Navigation
 implementation("androidx.navigation:navigation-compose:2.7.7")
 
 // 🌐 Network
 implementation("com.squareup.okhttp3:okhttp:4.12.0")
-implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 implementation("org.jsoup:jsoup:1.17.2")
+implementation("com.google.code.gson:gson:2.10.1")
 
-// ⚡ Coroutines
-implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+// 🖼️ Image Loading
+implementation("io.coil-kt:coil-compose:2.7.0")
+
+// 🎬 Media3 Video Player
+implementation("androidx.media3:media3-exoplayer:1.3.1")
+implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
+implementation("androidx.media3:media3-exoplayer-dash:1.3.1")
+implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
+implementation("androidx.media3:media3-ui:1.9.0")
+
+// 💾 Room Database
+implementation("androidx.room:room-runtime:2.8.4")
+implementation("androidx.room:room-ktx:2.8.4")
+ksp("androidx.room:room-compiler:2.8.4")
+
+// 🎮 Cast
+implementation("com.google.android.gms:play-services-cast:22.2.0")
+
+// 📐 Layout
+implementation("androidx.constraintlayout:constraintlayout:2.2.1")
 ```
 
 ---

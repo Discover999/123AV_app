@@ -1,5 +1,6 @@
 package com.android123av.app.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -47,9 +46,14 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.*
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -99,13 +103,13 @@ fun HomeScreen(
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var isCategoryChanging by remember { mutableStateOf(false) }
-    var currentPage by remember { mutableStateOf(1) }
+    var currentPage by remember { mutableIntStateOf(1) }
     var hasNextPage by remember { mutableStateOf(true) }
     var hasPrevPage by remember { mutableStateOf(false) }
-    var totalPages by remember { mutableStateOf(1) }
+    var totalPages by remember { mutableIntStateOf(1) }
     var selectedCategory by remember { mutableStateOf("新发布") }
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
-    var refreshTrigger by remember { mutableStateOf(0) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
     var selectedSortOption by remember { mutableStateOf(SortOption.RELEASE_DATE) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -113,9 +117,9 @@ fun HomeScreen(
     var searchResults by remember { mutableStateOf<List<Video>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var hasSearched by remember { mutableStateOf(false) }
-    var searchCurrentPage by remember { mutableStateOf(1) }
-    var searchTotalPages by remember { mutableStateOf(1) }
-    var searchTotalResults by remember { mutableStateOf(0) }
+    var searchCurrentPage by remember { mutableIntStateOf(1) }
+    var searchTotalPages by remember { mutableIntStateOf(1) }
+    var searchTotalResults by remember { mutableIntStateOf(0) }
     var isEditingHistory by remember { mutableStateOf(false) }
     var isHistoryExpanded by remember { mutableStateOf(false) }
 
@@ -133,10 +137,6 @@ fun HomeScreen(
             "未审查" -> SiteManager.buildZhUrl("dm9/uncensored?sort=${selectedSortOption.param}")
             else -> SiteManager.buildZhUrl("dm9")
         }
-    }
-
-    fun getUncensoredSortUrl(sortOption: SortOption): String {
-        return SiteManager.buildZhUrl("dm9/uncensored?sort=${sortOption.param}")
     }
 
     suspend fun performSearch(query: String, page: Int = 1) {
@@ -751,246 +751,350 @@ private fun SearchDialog(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
+    BasicAlertDialog(
+        onDismissRequest = onDismiss, modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp), properties = DialogProperties(
             dismissOnBackPress = true,
             dismissOnClickOutside = true,
             usePlatformDefaultWidth = false
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 850.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 8.dp
-        ) {
-            Column(
+        ), content = {
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .heightIn(max = 850.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 8.dp
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        text = "搜索视频",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                ) {
-                    TextField(
-                        value = query,
-                        onValueChange = onQueryChange,
-                        placeholder = {
-                            Text(
-                                "输入关键词搜索",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester)
-                            .onFocusChanged { onFocusChanged(it.isFocused) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = "搜索",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        trailingIcon = {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = onClear) {
-                                    Icon(
-                                        Icons.Default.Clear,
-                                        contentDescription = "清除",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions.Default.copy(
-                            imeAction = ImeAction.Search
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSearch = {
-                                keyboardController?.hide()
-                                onSearch()
-                            }
-                        ),
-                        singleLine = true,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent
-                        )
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (hasSearched && query.isNotEmpty()) {
-                    Text(
-                        text = if (totalResults > 0) {
-                            "找到 $totalResults 个结果"
-                        } else {
-                            "未找到搜索结果"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
-                if (searchHistory.isNotEmpty() && !hasSearched && query.isEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "搜索历史",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Medium
+                            text = "搜索视频",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (isEditingHistory) {
-                                TextButton(
-                                    onClick = onClearAllHistory,
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Text(
-                                        text = "全部删除",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            }
-                            
-                            if (searchHistory.size > 6) {
-                                IconButton(
-                                    onClick = onToggleHistoryExpanded,
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isHistoryExpanded) {
-                                            Icons.Default.KeyboardArrowUp
-                                        } else {
-                                            Icons.Default.KeyboardArrowDown
-                                        },
-                                        contentDescription = if (isHistoryExpanded) "收起" else "展开",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            
-                            IconButton(
-                                onClick = onToggleEditMode,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isEditingHistory) {
-                                        Icons.Default.Done
-                                    } else {
-                                        Icons.Default.Delete
-                                    },
-                                    contentDescription = if (isEditingHistory) "完成" else "删除",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "关闭")
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    val displayHistory = if (isHistoryExpanded || searchHistory.size <= 6) {
-                        searchHistory
-                    } else {
-                        searchHistory.take(6)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = 2.dp,
+                            pressedElevation = 4.dp
+                        )
+                    ) {
+                        TextField(
+                            value = query,
+                            onValueChange = { newValue ->
+                                if (newValue.length <= 15) {
+                                    onQueryChange(newValue)
+                                }
+                            },
+                            placeholder = {
+                                Text(
+                                    "输入关键词搜索...",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { onFocusChanged(it.isFocused) },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            if (isFocused) {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                            } else {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = "搜索",
+                                        tint = if (isFocused) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
+                            trailingIcon = {
+                                if (query.isNotEmpty()) {
+                                    AnimatedVisibility(visible = query.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = onClear,
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Clear,
+                                                contentDescription = "清除",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                } else if (isFocused) {
+                                    Spacer(modifier = Modifier.width(48.dp))
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions.Default.copy(
+                                imeAction = ImeAction.Search
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSearch = {
+                                    keyboardController?.hide()
+                                    onSearch()
+                                }
+                            ),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledIndicatorColor = Color.Transparent,
+                                cursorColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
                     }
 
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.heightIn(max = 160.dp)
-                    ) {
-                        items(displayHistory.chunked(3)) { rowItems ->
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (searchHistory.isNotEmpty() && !hasSearched && query.isEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                rowItems.forEach { historyItem ->
+                                Icon(
+                                    Icons.Default.History,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "搜索历史",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        text = "${searchHistory.size}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AnimatedVisibility(visible = isEditingHistory) {
+                                    TextButton(
+                                        onClick = onClearAllHistory,
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.DeleteSweep,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "清空",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+
+                                AnimatedVisibility(visible = !isEditingHistory && searchHistory.size > 6) {
                                     Surface(
+                                        onClick = onToggleHistoryExpanded,
                                         shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        border = BorderStroke(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.outline
-                                        ),
-                                        modifier = Modifier
-                                            .height(32.dp)
-                                            .weight(1f)
+                                        color = MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Row(
-                                            modifier = Modifier
-                                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                .heightIn(min = 24.dp)
-                                                .fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Text(
+                                                text = if (isHistoryExpanded) "收起" else "更多",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Icon(
+                                                imageVector = if (isHistoryExpanded) {
+                                                    Icons.Default.KeyboardArrowUp
+                                                } else {
+                                                    Icons.Default.KeyboardArrowDown
+                                                },
+                                                contentDescription = if (isHistoryExpanded) "收起" else "展开",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = onToggleEditMode,
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isEditingHistory) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isEditingHistory) {
+                                                Icons.Default.Done
+                                            } else {
+                                                Icons.Default.Edit
+                                            },
+                                            contentDescription = if (isEditingHistory) "完成" else "编辑",
+                                            tint = if (isEditingHistory) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = if (isEditingHistory) "完成" else "管理",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isEditingHistory) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val displayHistory = when {
+                            isEditingHistory -> searchHistory
+                            isHistoryExpanded || searchHistory.size <= 8 -> searchHistory
+                            else -> searchHistory.take(8)
+                        }
+
+                        val itemsPerRow = 3
+                        val maxRows = if (isEditingHistory || isHistoryExpanded) Int.MAX_VALUE else 2
+                        val maxItems = maxRows * itemsPerRow
+                        val actualDisplayHistory = if (isEditingHistory || isHistoryExpanded || searchHistory.size <= maxItems) {
+                            displayHistory
+                        } else {
+                            displayHistory.take(maxItems)
+                        }
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(itemsPerRow),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.heightIn(max = if (isEditingHistory || isHistoryExpanded) 320.dp else 72.dp)
+                        ) {
+                            items(actualDisplayHistory, key = { it }) { historyItem ->
+                                Surface(
+                                    onClick = { onHistoryClick(historyItem) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(32.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                Icons.Default.History,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
                                                 text = historyItem,
-                                                style = MaterialTheme.typography.labelLarge,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clickable(
-                                                        enabled = !isEditingHistory,
-                                                        onClick = { onHistoryClick(historyItem) }
-                                                    )
+                                                modifier = Modifier.weight(1f)
                                             )
-                                            
+
                                             if (isEditingHistory) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(20.dp)
-                                                        .clickable { onDeleteHistory(historyItem) },
-                                                    contentAlignment = Alignment.Center
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Surface(
+                                                    onClick = { onDeleteHistory(historyItem) },
+                                                    shape = CircleShape,
+                                                    color = MaterialTheme.colorScheme.errorContainer,
+                                                    modifier = Modifier.size(20.dp)
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Close,
+                                                        Icons.Default.Close,
                                                         contentDescription = "删除",
                                                         tint = MaterialTheme.colorScheme.error,
                                                         modifier = Modifier.size(14.dp)
@@ -1000,110 +1104,194 @@ private fun SearchDialog(
                                         }
                                     }
                                 }
-                                
-                                repeat(3 - rowItems.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    when {
-                        isSearching -> {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                        searchError != null -> {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        when {
+                            isSearching -> {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        Icons.Default.Error,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Text(
-                                        text = searchError!!,
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                        searchResults.isNotEmpty() -> {
-                            Column(
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(searchResults, key = { it.id }) { video ->
-                                        VideoItem(
-                                            video = video,
-                                            onClick = { onVideoClick(video) }
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(64.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(32.dp),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                strokeWidth = 3.dp
+                                            )
+                                        }
+                                        Text(
+                                            text = "正在搜索...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
+                            }
 
-                                if (totalPages > 1) {
-                                    SearchPagination(
-                                        currentPage = currentPage,
-                                        totalPages = totalPages,
-                                        onPageChange = onPageChange,
-                                        isLoading = isSearching
-                                    )
+                            searchError != null -> {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.errorContainer,
+                                            modifier = Modifier.size(72.dp)
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.CloudOff,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(36.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "搜索失败",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = searchError,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 32.dp)
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        hasSearched && query.isNotEmpty() -> {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
+
+                            searchResults.isNotEmpty() -> {
                                 Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(
-                                        Icons.Default.Search,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Text(
-                                        text = "未找到搜索结果",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Search,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "找到 $totalResults 个相关视频",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(searchResults, key = { it.id }) { video ->
+                                            VideoItem(
+                                                video = video,
+                                                onClick = { onVideoClick(video) }
+                                            )
+                                        }
+                                    }
+
+                                    if (totalPages > 1) {
+                                        SearchPagination(
+                                            currentPage = currentPage,
+                                            totalPages = totalPages,
+                                            onPageChange = onPageChange,
+                                            isLoading = isSearching
+                                        )
+                                    }
+                                }
+                            }
+
+                            hasSearched && query.isNotEmpty() -> {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            modifier = Modifier.size(80.dp)
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.SearchOff,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(40.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "未找到相关结果",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "试试其他关键词",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-    }
+        })
 }
 
 @Composable
@@ -1113,6 +1301,8 @@ private fun SearchPagination(
     onPageChange: (Int) -> Unit,
     isLoading: Boolean
 ) {
+    var showPageSelector by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1120,30 +1310,158 @@ private fun SearchPagination(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick = { if (currentPage > 1) onPageChange(currentPage - 1) },
-            enabled = currentPage > 1 && !isLoading
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.padding(horizontal = 4.dp)
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "上一页"
-            )
-        }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = { if (currentPage > 1) onPageChange(currentPage - 1) },
+                    enabled = currentPage > 1 && !isLoading,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        contentDescription = "上一页",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
 
-        Text(
-            text = "$currentPage / $totalPages",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier
+                        .padding(vertical = 4.dp)
+                        .clickable { showPageSelector = true }
+                ) {
+                    Text(
+                        text = "第 $currentPage / $totalPages 页",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
 
-        IconButton(
-            onClick = { if (currentPage < totalPages) onPageChange(currentPage + 1) },
-            enabled = currentPage < totalPages && !isLoading
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "下一页"
-            )
+                IconButton(
+                    onClick = { if (currentPage < totalPages) onPageChange(currentPage + 1) },
+                    enabled = currentPage < totalPages && !isLoading,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "下一页",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         }
     }
+
+    if (showPageSelector) {
+        PageSelectorDialog(
+            currentPage = currentPage,
+            totalPages = totalPages,
+            onDismiss = { showPageSelector = false },
+            onPageSelected = { page ->
+                onPageChange(page)
+                showPageSelector = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun PageSelectorDialog(
+    currentPage: Int,
+    totalPages: Int,
+    onDismiss: () -> Unit,
+    onPageSelected: (Int) -> Unit
+) {
+    var selectedPage by remember { mutableIntStateOf(currentPage) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "选择页码",
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 300.dp)
+            ) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(5),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(totalPages) { page ->
+                        val pageNumber = page + 1
+                        Surface(
+                            onClick = {
+                                selectedPage = pageNumber
+                                onPageSelected(pageNumber)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (selectedPage == pageNumber) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (selectedPage == pageNumber) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                }
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = pageNumber.toString(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selectedPage == pageNumber) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    fontWeight = if (selectedPage == pageNumber) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Normal
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onPageSelected(selectedPage)
+            }) {
+                Text("确定")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }

@@ -11,7 +11,7 @@ import com.android123av.app.models.Video
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen(
+fun AllVideo(
     modifier: Modifier = Modifier,
     onVideoClick: (Video) -> Unit
 ) {
@@ -20,7 +20,7 @@ fun SearchScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "搜索",
+                        "其他",
                         fontWeight = FontWeight.Bold
                     )
                 },

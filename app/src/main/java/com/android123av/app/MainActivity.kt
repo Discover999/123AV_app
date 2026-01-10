@@ -111,7 +111,7 @@ fun MyApplicationApp() {
                     context.startActivity(intent)
                 }
             )
-            AppDestinations.SEARCH -> SearchScreen(
+            AppDestinations.SEARCH -> AllVideo(
                 modifier = Modifier.padding(it),
                 onVideoClick = { video ->
                     val intent = Intent(context, VideoPlayerActivity::class.java)
