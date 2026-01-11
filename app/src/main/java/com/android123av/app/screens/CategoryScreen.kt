@@ -1,7 +1,7 @@
 package com.android123av.app.screens
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -75,7 +75,8 @@ fun CategoryScreen(
     onVideoClick: (Video) -> Unit,
     onActressClick: (String) -> Unit = {}
 ) {
-    val isActressesListPage = categoryHref.contains("actresses?")
+    val isActressesListPage = categoryHref.contains("actresses?") || 
+                              (categoryTitle.contains("女演员", ignoreCase = true) && categoryHref.contains("actresses"))
     val isActressDetailPage =
         categoryHref.contains("actresses/") && !categoryHref.contains("actresses?")
 
@@ -98,6 +99,28 @@ fun CategoryScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var isTopBarExpanded by remember { mutableStateOf(true) }
+
+    val topBarHeight by animateDpAsState(
+        targetValue = if (isActressDetailPage && actressDetail != null) {
+            if (isTopBarExpanded) 160.dp else 64.dp
+        } else {
+            64.dp
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "topBarHeight"
+    )
+
+    val avatarSize by animateDpAsState(
+        targetValue = if (isTopBarExpanded) 64.dp else 40.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "avatarSize"
+    )
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -201,13 +224,7 @@ fun CategoryScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(
-                                if (isActressDetailPage && actressDetail != null) {
-                                    if (isTopBarExpanded) 160.dp else 64.dp
-                                } else {
-                                    64.dp
-                                }
-                            )
+                            .height(topBarHeight)
                             .padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -233,7 +250,7 @@ fun CategoryScreen(
                                             model = actressDetail!!.avatarUrl,
                                             contentDescription = actressDetail!!.name,
                                             modifier = Modifier
-                                                .size(if (isTopBarExpanded) 64.dp else 40.dp)
+                                                .size(avatarSize)
                                                 .clip(CircleShape),
                                             contentScale = ContentScale.Crop
                                         )
