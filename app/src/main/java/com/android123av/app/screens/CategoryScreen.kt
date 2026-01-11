@@ -2,6 +2,7 @@ package com.android123av.app.screens
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -17,10 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
@@ -38,9 +39,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import kotlinx.coroutines.Dispatchers
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.IOException
 
 private enum class CategoryContentState {
@@ -74,8 +76,9 @@ fun CategoryScreen(
     onActressClick: (String) -> Unit = {}
 ) {
     val isActressesListPage = categoryHref.contains("actresses?")
-    val isActressDetailPage = categoryHref.contains("actresses/") && !categoryHref.contains("actresses?")
-    
+    val isActressDetailPage =
+        categoryHref.contains("actresses/") && !categoryHref.contains("actresses?")
+
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var actresses by remember { mutableStateOf<List<Actress>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -91,13 +94,29 @@ fun CategoryScreen(
     var sortOptions by remember { mutableStateOf<List<SortOption>>(emptyList()) }
     var currentSort by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
-    
+
     val coroutineScope = rememberCoroutineScope()
-    
+
+    var isTopBarExpanded by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta < 0 && isTopBarExpanded) {
+                    isTopBarExpanded = false
+                } else if (delta > 0 && !isTopBarExpanded) {
+                    isTopBarExpanded = true
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
     fun extractSortFromUrl(url: String): String {
         return url.substringAfter("?sort=", "").substringBefore("&")
     }
-    
+
     fun loadVideos(sortParam: String = "", isRefresh: Boolean = false) {
         coroutineScope.launch {
             if (isRefresh) {
@@ -114,7 +133,7 @@ fun CategoryScreen(
                 } else {
                     SiteManager.buildZhUrl(categoryHref)
                 }
-                
+
                 val paginationInfo = if (isActressesListPage) {
                     val (newActresses, info) = fetchActresses(url, currentPage)
                     actresses = newActresses
@@ -128,14 +147,14 @@ fun CategoryScreen(
                     actresses = emptyList()
                     info
                 }
-                
+
                 hasNextPage = paginationInfo.hasNextPage
                 hasPrevPage = paginationInfo.hasPrevPage
                 totalPages = paginationInfo.totalPages
                 categoryInfo = Pair(paginationInfo.categoryTitle, paginationInfo.videoCount)
                 actressDetail = paginationInfo.actressDetail
-                
-                val actualSortParam = if (sortParam.isNotEmpty()) sortParam else extractSortFromUrl(categoryHref)
+
+                val actualSortParam = sortParam.ifEmpty { extractSortFromUrl(categoryHref) }
                 currentSort = paginationInfo.currentSort
                 sortOptions = paginationInfo.sortOptions.map { option ->
                     option.copy(isSelected = option.value == actualSortParam)
@@ -155,184 +174,210 @@ fun CategoryScreen(
             }
         }
     }
-    
+
     fun loadVideosWithSort(sortValue: String) {
         currentPage = 1
         loadVideos(sortValue)
     }
-    
+
     LaunchedEffect(currentPage, categoryHref) {
-        val sortToUse = if (currentSort.isNotEmpty()) currentSort else extractSortFromUrl(categoryHref)
+        val sortToUse = currentSort.ifEmpty { extractSortFromUrl(categoryHref) }
         loadVideos(sortToUse)
     }
-    
+
     Scaffold(
+        modifier = Modifier.nestedScroll(nestedScrollConnection),
         topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                if (categoryInfo.first.isNotEmpty()) categoryInfo.first else categoryTitle,
-                                fontWeight = FontWeight.Bold
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
+            ) {
+                Column {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(
+                                if (isActressDetailPage && actressDetail != null) {
+                                    if (isTopBarExpanded) 160.dp else 64.dp
+                                } else {
+                                    64.dp
+                                }
                             )
-                            if (categoryInfo.second.isNotEmpty()) {
-                                Text(
-                                    text = categoryInfo.second,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onBack
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                        }
-                    },
-                actions = {
-                    if (sortOptions.isNotEmpty()) {
-                        Box {
-                            IconButton(onClick = { showSortMenu = true }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Sort,
-                                    contentDescription = "排序",
-                                    tint = if (currentSort.isNotEmpty()) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
+                        Box(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            if (isActressDetailPage && actressDetail != null) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (actressDetail!!.avatarUrl.isNotEmpty()) {
+                                        AsyncImage(
+                                            model = actressDetail!!.avatarUrl,
+                                            contentDescription = actressDetail!!.name,
+                                            modifier = Modifier
+                                                .size(if (isTopBarExpanded) 64.dp else 40.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
                                     }
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false },
-                                properties = PopupProperties(focusable = true)
-                            ) {
-                                sortOptions.forEach { option ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                if (option.isSelected) {
-                                                    Icon(
-                                                        Icons.Default.Check,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(18.dp),
-                                                        tint = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
+                                    Column {
+                                        Text(
+                                            text = actressDetail!!.name,
+                                            fontWeight = FontWeight.Bold,
+                                            style = if (isTopBarExpanded) {
+                                                MaterialTheme.typography.titleLarge
+                                            } else {
+                                                MaterialTheme.typography.titleMedium
+                                            },
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (isTopBarExpanded) {
+                                            if (actressDetail!!.birthday.isNotEmpty()) {
                                                 Text(
-                                                    text = option.title,
-                                                    fontWeight = if (option.isSelected) {
-                                                        FontWeight.Bold
-                                                    } else {
-                                                        FontWeight.Normal
-                                                    },
-                                                    color = if (option.isSelected) {
-                                                        MaterialTheme.colorScheme.primary
-                                                    } else {
-                                                        MaterialTheme.colorScheme.onSurface
-                                                    }
+                                                    text = actressDetail!!.birthday,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(top = 4.dp)
                                                 )
                                             }
-                                        },
-                                        onClick = {
-                                            if (!option.isSelected) {
-                                                loadVideosWithSort(option.value)
+                                            if (actressDetail!!.height.isNotEmpty() || actressDetail!!.measurements.isNotEmpty()) {
+                                                Text(
+                                                    text = "${actressDetail!!.height} - ${actressDetail!!.measurements}",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(top = 2.dp)
+                                                )
                                             }
-                                            showSortMenu = false
-                                        },
-                                        colors = if (option.isSelected) {
-                                            MenuDefaults.itemColors(
-                                                textColor = MaterialTheme.colorScheme.primary,
-                                                leadingIconColor = MaterialTheme.colorScheme.primary,
-                                                trailingIconColor = MaterialTheme.colorScheme.primary
-                                            )
-                                        } else {
-                                            MenuDefaults.itemColors()
+                                            if (actressDetail!!.videoCount > 0) {
+                                                Text(
+                                                    text = "${actressDetail!!.videoCount} 视频",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(top = 2.dp)
+                                                )
+                                            }
                                         }
+                                    }
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        categoryInfo.first.ifEmpty { categoryTitle },
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
+                                    if (categoryInfo.second.isNotEmpty()) {
+                                        Text(
+                                            text = categoryInfo.second,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (!isActressesListPage) {
-                        IconButton(onClick = {
-                            viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
-                        }) {
-                            Icon(
-                                imageVector = if (viewMode == ViewMode.LIST) {
-                                    Icons.Default.Menu
-                                } else {
-                                    Icons.Default.Apps
-                                },
-                                contentDescription = "切换视图"
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-            
-            if (isActressDetailPage) {
-                actressDetail?.let { detail ->
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        tonalElevation = 2.dp
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (detail.avatarUrl.isNotEmpty()) {
-                                AsyncImage(
-                                    model = detail.avatarUrl,
-                                    contentDescription = detail.name,
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(CircleShape),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
+                        Row {
+                            if (sortOptions.isNotEmpty()) {
+                                Box {
+                                    IconButton(onClick = { showSortMenu = true }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.Sort,
+                                            contentDescription = "排序",
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = showSortMenu,
+                                        onDismissRequest = { showSortMenu = false },
+                                        properties = PopupProperties(focusable = true)
+                                    ) {
+                                        sortOptions.forEach { option ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(
+                                                            4.dp
+                                                        )
+                                                    ) {
+                                                        if (option.isSelected) {
+                                                            Icon(
+                                                                Icons.Default.Check,
+                                                                contentDescription = null,
+                                                                modifier = Modifier.size(18.dp),
+                                                                tint = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = option.title,
+                                                            fontWeight = if (option.isSelected) {
+                                                                FontWeight.Bold
+                                                            } else {
+                                                                FontWeight.Normal
+                                                            },
+                                                            color = if (option.isSelected) {
+                                                                MaterialTheme.colorScheme.primary
+                                                            } else {
+                                                                MaterialTheme.colorScheme.onSurface
+                                                            }
+                                                        )
+                                                    }
+                                                },
+                                                onClick = {
+                                                    if (!option.isSelected) {
+                                                        loadVideosWithSort(option.value)
+                                                    }
+                                                    showSortMenu = false
+                                                },
+                                                colors = if (option.isSelected) {
+                                                    MenuDefaults.itemColors(
+                                                        textColor = MaterialTheme.colorScheme.primary,
+                                                        leadingIconColor = MaterialTheme.colorScheme.primary,
+                                                        trailingIconColor = MaterialTheme.colorScheme.primary
+                                                    )
+                                                } else {
+                                                    MenuDefaults.itemColors()
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = detail.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                if (detail.birthday.isNotEmpty()) {
-                                    Text(
-                                        text = detail.birthday,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                if (detail.height.isNotEmpty() || detail.measurements.isNotEmpty()) {
-                                    Text(
-                                        text = "${detail.height} - ${detail.measurements}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
-                                if (detail.videoCount > 0) {
-                                    Text(
-                                        text = "${detail.videoCount} 视频",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 2.dp)
+                            if (!isActressesListPage) {
+                                IconButton(onClick = {
+                                    viewMode =
+                                        if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
+                                }) {
+                                    Icon(
+                                        imageVector = if (viewMode == ViewMode.LIST) {
+                                            Icons.Default.Menu
+                                        } else {
+                                            Icons.Default.Apps
+                                        },
+                                        contentDescription = "切换视图",
+                                        tint = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -340,8 +385,8 @@ fun CategoryScreen(
                     }
                 }
             }
-        }
-    }) { paddingValues ->
+        })
+    { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -370,6 +415,7 @@ fun CategoryScreen(
                         CategoryContentState.LOADING -> {
                             CategoryLoadingSkeleton()
                         }
+
                         CategoryContentState.ERROR -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
@@ -389,6 +435,7 @@ fun CategoryScreen(
                                 }
                             }
                         }
+
                         CategoryContentState.EMPTY -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
@@ -397,6 +444,7 @@ fun CategoryScreen(
                                 Text("暂无数据")
                             }
                         }
+
                         CategoryContentState.CONTENT -> {
                             if (isActressesListPage) {
                                 Box(modifier = Modifier.fillMaxSize()) {
@@ -450,6 +498,7 @@ fun CategoryScreen(
                                             bottomPadding = 16.dp
                                         )
                                     }
+
                                     ViewMode.GRID -> {
                                         VideoGridContent(
                                             videos = videos,
