@@ -66,6 +66,12 @@ class CategoryActivity : ComponentActivity() {
                         intent.putExtra("categoryTitle", "")
                         intent.putExtra("categoryHref", actressHref)
                         startActivity(intent)
+                    },
+                    onSeriesClick = { seriesHref ->
+                        val intent = Intent(this, CategoryActivity::class.java)
+                        intent.putExtra("categoryTitle", "")
+                        intent.putExtra("categoryHref", seriesHref)
+                        startActivity(intent)
                     }
                 )
             }

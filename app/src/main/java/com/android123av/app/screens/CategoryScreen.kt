@@ -28,12 +28,14 @@ import coil.compose.AsyncImage
 import com.android123av.app.components.*
 import com.android123av.app.models.Video
 import com.android123av.app.models.Actress
+import com.android123av.app.models.Series
 import com.android123av.app.models.ActressDetail
 import com.android123av.app.models.ViewMode
 import com.android123av.app.models.SortOption
 import com.android123av.app.network.fetchVideosDataWithResponse
 import com.android123av.app.network.parseVideosFromHtml
 import com.android123av.app.network.fetchActresses
+import com.android123av.app.network.fetchSeries
 import com.android123av.app.network.SiteManager
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -73,15 +75,18 @@ fun CategoryScreen(
     categoryHref: String,
     onBack: () -> Unit,
     onVideoClick: (Video) -> Unit,
-    onActressClick: (String) -> Unit = {}
+    onActressClick: (String) -> Unit = {},
+    onSeriesClick: (String) -> Unit = {}
 ) {
     val isActressesListPage = categoryHref.contains("actresses?") || 
                               (categoryTitle.contains("女演员", ignoreCase = true) && categoryHref.contains("actresses"))
     val isActressDetailPage =
         categoryHref.contains("actresses/") && !categoryHref.contains("actresses?")
+    val isSeriesListPage = categoryHref.contains("series") && !categoryHref.contains("v/")
 
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var actresses by remember { mutableStateOf<List<Actress>>(emptyList()) }
+    var series by remember { mutableStateOf<List<Series>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(1) }
@@ -157,10 +162,17 @@ fun CategoryScreen(
                     SiteManager.buildZhUrl(categoryHref)
                 }
 
-                val paginationInfo = if (isActressesListPage) {
+                val paginationInfo = if (isSeriesListPage) {
+                    val (newSeries, info) = fetchSeries(url, currentPage)
+                    series = newSeries
+                    videos = emptyList()
+                    actresses = emptyList()
+                    info
+                } else if (isActressesListPage) {
                     val (newActresses, info) = fetchActresses(url, currentPage)
                     actresses = newActresses
                     videos = emptyList()
+                    series = emptyList()
                     info
                 } else {
                     val (newVideos, info) = parseVideosFromHtml(
@@ -168,6 +180,7 @@ fun CategoryScreen(
                     )
                     videos = newVideos
                     actresses = emptyList()
+                    series = emptyList()
                     info
                 }
 
@@ -420,9 +433,9 @@ fun CategoryScreen(
             ) {
                 Crossfade(
                     targetState = when {
-                        isLoading && videos.isEmpty() && actresses.isEmpty() -> CategoryContentState.LOADING
-                        error != null && videos.isEmpty() && actresses.isEmpty() -> CategoryContentState.ERROR
-                        videos.isEmpty() && actresses.isEmpty() -> CategoryContentState.EMPTY
+                        isLoading && videos.isEmpty() && actresses.isEmpty() && series.isEmpty() -> CategoryContentState.LOADING
+                        error != null && videos.isEmpty() && actresses.isEmpty() && series.isEmpty() -> CategoryContentState.ERROR
+                        videos.isEmpty() && actresses.isEmpty() && series.isEmpty() -> CategoryContentState.EMPTY
                         else -> CategoryContentState.CONTENT
                     },
                     animationSpec = tween(300),
@@ -463,7 +476,41 @@ fun CategoryScreen(
                         }
 
                         CategoryContentState.CONTENT -> {
-                            if (isActressesListPage) {
+                            if (isSeriesListPage) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Adaptive(minSize = 150.dp),
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(
+                                            start = 16.dp,
+                                            top = 16.dp,
+                                            end = 16.dp,
+                                            bottom = 16.dp
+                                        ),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(series) { seriesItem ->
+                                            SeriesCard(
+                                                series = seriesItem,
+                                                onClick = { onSeriesClick("series/${seriesItem.id}") }
+                                            )
+                                        }
+                                        item(span = { GridItemSpan(maxLineSpan) }) {
+                                            PaginationComponent(
+                                                currentPage = currentPage,
+                                                totalPages = totalPages,
+                                                hasNextPage = hasNextPage,
+                                                hasPrevPage = hasPrevPage,
+                                                isLoading = isLoading,
+                                                onLoadNext = { if (hasNextPage) currentPage++ },
+                                                onLoadPrevious = { if (hasPrevPage) currentPage-- },
+                                                onPageSelected = { page -> currentPage = page }
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (isActressesListPage) {
                                 Box(modifier = Modifier.fillMaxSize()) {
                                     LazyVerticalGrid(
                                         columns = GridCells.Adaptive(minSize = 150.dp),

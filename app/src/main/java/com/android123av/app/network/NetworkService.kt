@@ -1318,3 +1318,41 @@ suspend fun fetchActresses(url: String, page: Int = 1): Pair<List<com.android123
         }
     }
 }
+
+suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Series>, PaginationInfo> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val fullUrl = if (page > 1) {
+                if (url.contains("?")) {
+                    "$url&page=$page"
+                } else {
+                    "$url?page=$page"
+                }
+            } else {
+                url
+            }
+            
+            android.util.Log.d("FetchSeries", "Fetching series from URL: $fullUrl")
+            val request = Request.Builder()
+                .url(fullUrl)
+                .headers(commonHeaders())
+                .build()
+            
+            val response = okHttpClient.newCall(request).execute()
+            android.util.Log.d("FetchSeries", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
+            
+            if (response.isSuccessful) {
+                val html = response.body?.string() ?: ""
+                android.util.Log.d("FetchSeries", "HTML length: ${html.length}")
+                return@withContext parseSeriesFromHtml(html)
+            } else {
+                android.util.Log.e("FetchSeries", "Request failed with code: ${response.code}")
+                return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FetchSeries", "Error fetching series", e)
+            e.printStackTrace()
+            return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+        }
+    }
+}

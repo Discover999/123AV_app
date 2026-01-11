@@ -180,5 +180,11 @@ data class ActressDetail(
     val videoCount: Int = 0
 )
 
+data class Series(
+    val id: String,
+    val name: String,
+    val videoCount: Int
+)
+
 
 

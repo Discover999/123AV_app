@@ -4,6 +4,7 @@ import com.android123av.app.models.VideoDetails
 import com.android123av.app.models.MenuItem
 import com.android123av.app.models.MenuSection
 import com.android123av.app.models.Actress
+import com.android123av.app.models.Series
 import com.android123av.app.models.PaginationInfo
 import com.android123av.app.models.SortOption
 import org.jsoup.Jsoup
@@ -207,5 +208,104 @@ fun parseActressesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo 
         videoCount = videoCount,
         currentSort = currentSort,
         sortOptions = sortOptions
+    )
+}
+
+fun parseSeriesFromHtml(html: String): Pair<List<Series>, PaginationInfo> {
+    return try {
+        val doc = Jsoup.parse(html)
+        val seriesList = mutableListOf<Series>()
+        
+        android.util.Log.d("parseSeriesFromHtml", "HTML length: ${html.length}")
+        
+        val seriesElements = doc.select("div.bl-item")
+        android.util.Log.d("parseSeriesFromHtml", "Found ${seriesElements.size} series elements with selector 'div.bl-item'")
+        
+        seriesElements.forEachIndexed { index, element ->
+            val linkElement = element.selectFirst("a")
+            if (linkElement != null) {
+                val href = linkElement.attr("href").trim()
+                android.util.Log.d("parseSeriesFromHtml", "Element $index: href=$href")
+                
+                val id = if (href.contains("/")) href.substringAfterLast("/") else href
+                
+                var name = element.attr("title").trim()
+                android.util.Log.d("parseSeriesFromHtml", "Element $index: title attr=${element.attr("title")}")
+                
+                if (name.isEmpty()) {
+                    val nameElement = linkElement.selectFirst("div.name")
+                    if (nameElement != null) {
+                        name = nameElement.text().trim()
+                        android.util.Log.d("parseSeriesFromHtml", "Element $index: name from div.name=$name")
+                    }
+                }
+                
+                val videoCountText = linkElement.selectFirst("div.text-muted")?.text()?.trim() ?: "0"
+                android.util.Log.d("parseSeriesFromHtml", "Element $index: videoCountText=$videoCountText")
+                
+                val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
+                
+                if (name.isNotEmpty() && id.isNotEmpty()) {
+                    seriesList.add(Series(id, name, videoCount))
+                    android.util.Log.d("parseSeriesFromHtml", "Added series: id=$id, name=$name, videoCount=$videoCount")
+                }
+            }
+        }
+        
+        android.util.Log.d("parseSeriesFromHtml", "Total series parsed: ${seriesList.size}")
+        
+        val paginationInfo = parseSeriesPaginationInfo(doc)
+        
+        Pair(seriesList, paginationInfo)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Pair(emptyList(), PaginationInfo(1, 1, false, false))
+    }
+}
+
+fun parseSeriesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo {
+    val currentPageElement = doc.selectFirst("li.page-item.active span.page-link")
+    val currentPage = currentPageElement?.text()?.toIntOrNull() ?: 1
+
+    val pageLinks = doc.select("li.page-item a.page-link")
+    var totalPages = currentPage
+
+    pageLinks.forEach { link ->
+        val pageNum = link.text()?.toIntOrNull()
+        if (pageNum != null && pageNum > totalPages) {
+            totalPages = pageNum
+        }
+    }
+
+    val hasNextPage = doc.select("li.page-item a.page-link[rel*=next]").isNotEmpty()
+    val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
+
+    val titleElement = doc.selectFirst("div.title h2")
+    val categoryTitle = titleElement?.text() ?: ""
+    
+    val finalTitle = if (categoryTitle.isEmpty()) {
+        val h1Element = doc.selectFirst("h1")
+        h1Element?.text() ?: "系列"
+    } else {
+        categoryTitle
+    }
+
+    val videoCountElement = doc.selectFirst("div.title div.text-muted")
+    val videoCount = videoCountElement?.text() ?: ""
+
+    val totalResultsText = videoCount
+        .replace(",", "")
+        .replace("项目", "")
+        .replace(" ", "")
+    val totalResults = totalResultsText.toIntOrNull() ?: 0
+
+    return PaginationInfo(
+        currentPage = currentPage,
+        totalPages = totalPages,
+        hasNextPage = hasNextPage || currentPage < totalPages,
+        hasPrevPage = hasPrevPage || currentPage > 1,
+        totalResults = totalResults,
+        categoryTitle = finalTitle,
+        videoCount = videoCount
     )
 }
