@@ -1344,7 +1344,7 @@ suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
                 android.util.Log.d("FetchSeries", "HTML length: ${html.length}")
-                return@withContext parseSeriesFromHtml(html)
+                return@withContext parseSeriesFromHtml(html, fullUrl)
             } else {
                 android.util.Log.e("FetchSeries", "Request failed with code: ${response.code}")
                 return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))

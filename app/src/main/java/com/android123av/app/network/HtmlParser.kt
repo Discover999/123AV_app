@@ -190,7 +190,7 @@ fun parseActressesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo 
                     val title = item.selectFirst("span")?.text() ?: ""
                     val sortValue = href.substringAfter("?sort=").substringBefore("&")
                     if (title.isNotEmpty() && sortValue.isNotEmpty()) {
-                        sortOptions.add(SortOption(title, sortValue, title == currentSort))
+                        sortOptions.add(SortOption(title, sortValue, sortValue == currentSort))
                     }
                 }
             }
@@ -211,7 +211,7 @@ fun parseActressesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo 
     )
 }
 
-fun parseSeriesFromHtml(html: String): Pair<List<Series>, PaginationInfo> {
+fun parseSeriesFromHtml(html: String, currentUrl: String = ""): Pair<List<Series>, PaginationInfo> {
     return try {
         val doc = Jsoup.parse(html)
         val seriesList = mutableListOf<Series>()
@@ -254,7 +254,7 @@ fun parseSeriesFromHtml(html: String): Pair<List<Series>, PaginationInfo> {
         
         android.util.Log.d("parseSeriesFromHtml", "Total series parsed: ${seriesList.size}")
         
-        val paginationInfo = parseSeriesPaginationInfo(doc)
+        val paginationInfo = parseSeriesPaginationInfo(doc, currentUrl)
         
         Pair(seriesList, paginationInfo)
     } catch (e: Exception) {
@@ -263,7 +263,7 @@ fun parseSeriesFromHtml(html: String): Pair<List<Series>, PaginationInfo> {
     }
 }
 
-fun parseSeriesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo {
+fun parseSeriesPaginationInfo(doc: org.jsoup.nodes.Document, currentUrl: String = ""): PaginationInfo {
     val currentPageElement = doc.selectFirst("li.page-item.active span.page-link")
     val currentPage = currentPageElement?.text()?.toIntOrNull() ?: 1
 
@@ -299,6 +299,35 @@ fun parseSeriesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo {
         .replace(" ", "")
     val totalResults = totalResultsText.toIntOrNull() ?: 0
 
+    val sortOptions = mutableListOf<SortOption>()
+    
+    val currentSort = if (currentUrl.contains("?sort=")) {
+        currentUrl.substringAfter("?sort=").substringBefore("&")
+    } else {
+        ""
+    }
+    
+    val sortDropdowns = doc.select("div.dropdown-menu")
+    for (sortDropdown in sortDropdowns) {
+        val dropdownParent = sortDropdown.parent()
+        val dropdownLabel = dropdownParent?.select("span.text-muted")?.firstOrNull()?.text() ?: ""
+        
+        if (dropdownLabel.contains("排序方式")) {
+            val sortItems = sortDropdown.select("a.dropdown-item")
+            sortItems.forEach { item ->
+                val href = item.attr("href")
+                if (href.contains("?sort=")) {
+                    val title = item.selectFirst("span")?.text() ?: ""
+                    val sortValue = href.substringAfter("?sort=").substringBefore("&")
+                    if (title.isNotEmpty() && sortValue.isNotEmpty()) {
+                        sortOptions.add(SortOption(title, sortValue, sortValue == currentSort))
+                    }
+                }
+            }
+            break
+        }
+    }
+
     return PaginationInfo(
         currentPage = currentPage,
         totalPages = totalPages,
@@ -306,6 +335,8 @@ fun parseSeriesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo {
         hasPrevPage = hasPrevPage || currentPage > 1,
         totalResults = totalResults,
         categoryTitle = finalTitle,
-        videoCount = videoCount
+        videoCount = videoCount,
+        currentSort = currentSort,
+        sortOptions = sortOptions
     )
 }

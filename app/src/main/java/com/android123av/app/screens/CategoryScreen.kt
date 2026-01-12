@@ -2,9 +2,9 @@ package com.android123av.app.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -82,7 +82,10 @@ fun CategoryScreen(
                               (categoryTitle.contains("女演员", ignoreCase = true) && categoryHref.contains("actresses"))
     val isActressDetailPage =
         categoryHref.contains("actresses/") && !categoryHref.contains("actresses?")
-    val isSeriesListPage = categoryHref.contains("series") && !categoryHref.contains("v/")
+    val isSeriesListPage = categoryHref.matches(Regex(".*/series\\??$")) || 
+                           categoryHref.matches(Regex(".*/series\\?.*")) ||
+                           categoryHref.matches(Regex("^series\\??$")) ||
+                           categoryHref.matches(Regex("^series\\?.*"))
 
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var actresses by remember { mutableStateOf<List<Actress>>(emptyList()) }
@@ -101,6 +104,7 @@ fun CategoryScreen(
     var currentSort by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
 
+    val seriesListState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
 
     var isTopBarExpanded by remember { mutableStateOf(true) }
@@ -192,8 +196,17 @@ fun CategoryScreen(
 
                 val actualSortParam = sortParam.ifEmpty { extractSortFromUrl(categoryHref) }
                 currentSort = paginationInfo.currentSort
-                sortOptions = paginationInfo.sortOptions.map { option ->
+                val mappedOptions = paginationInfo.sortOptions.map { option ->
                     option.copy(isSelected = option.value == actualSortParam)
+                }
+                sortOptions = if (mappedOptions.any { it.isSelected }) {
+                    mappedOptions
+                } else if (mappedOptions.isNotEmpty()) {
+                    mappedOptions.mapIndexed { index, option ->
+                        if (index == 0) option.copy(isSelected = true) else option
+                    }
+                } else {
+                    mappedOptions
                 }
             } catch (e: IOException) {
                 error = "网络连接失败，请检查网络设置"
@@ -343,59 +356,79 @@ fun CategoryScreen(
                                         onDismissRequest = { showSortMenu = false },
                                         properties = PopupProperties(focusable = true)
                                     ) {
-                                        sortOptions.forEach { option ->
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(
-                                                            4.dp
-                                                        )
-                                                    ) {
-                                                        if (option.isSelected) {
-                                                            Icon(
-                                                                Icons.Default.Check,
-                                                                contentDescription = null,
-                                                                modifier = Modifier.size(18.dp),
-                                                                tint = MaterialTheme.colorScheme.primary
+                                        sortOptions.forEachIndexed { index, option ->
+                                            AnimatedVisibility(
+                                                visible = true,
+                                                enter = fadeIn(
+                                                    animationSpec = tween(
+                                                        durationMillis = 150,
+                                                        delayMillis = index * 30
+                                                    )
+                                                ) + slideInVertically(
+                                                    initialOffsetY = { it / 2 },
+                                                    animationSpec = tween(
+                                                        durationMillis = 200,
+                                                        delayMillis = index * 30
+                                                    )
+                                                ),
+                                                exit = fadeOut(animationSpec = tween(100))
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(
+                                                                4.dp
+                                                            )
+                                                        ) {
+                                                            if (option.isSelected) {
+                                                                Icon(
+                                                                    Icons.Default.Check,
+                                                                    contentDescription = null,
+                                                                    modifier = Modifier.size(18.dp),
+                                                                    tint = MaterialTheme.colorScheme.primary
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = option.title,
+                                                                fontWeight = if (option.isSelected) {
+                                                                    FontWeight.Bold
+                                                                } else {
+                                                                    FontWeight.Normal
+                                                                },
+                                                                color = if (option.isSelected) {
+                                                                    MaterialTheme.colorScheme.primary
+                                                                } else {
+                                                                    MaterialTheme.colorScheme.onSurface
+                                                                }
                                                             )
                                                         }
-                                                        Text(
-                                                            text = option.title,
-                                                            fontWeight = if (option.isSelected) {
-                                                                FontWeight.Bold
-                                                            } else {
-                                                                FontWeight.Normal
-                                                            },
-                                                            color = if (option.isSelected) {
-                                                                MaterialTheme.colorScheme.primary
-                                                            } else {
-                                                                MaterialTheme.colorScheme.onSurface
+                                                    },
+                                                    onClick = {
+                                                        if (!option.isSelected) {
+                                                            coroutineScope.launch {
+                                                                seriesListState.animateScrollToItem(0)
                                                             }
+                                                            loadVideosWithSort(option.value)
+                                                        }
+                                                        showSortMenu = false
+                                                    },
+                                                    colors = if (option.isSelected) {
+                                                        MenuDefaults.itemColors(
+                                                            textColor = MaterialTheme.colorScheme.primary,
+                                                            leadingIconColor = MaterialTheme.colorScheme.primary,
+                                                            trailingIconColor = MaterialTheme.colorScheme.primary
                                                         )
+                                                    } else {
+                                                        MenuDefaults.itemColors()
                                                     }
-                                                },
-                                                onClick = {
-                                                    if (!option.isSelected) {
-                                                        loadVideosWithSort(option.value)
-                                                    }
-                                                    showSortMenu = false
-                                                },
-                                                colors = if (option.isSelected) {
-                                                    MenuDefaults.itemColors(
-                                                        textColor = MaterialTheme.colorScheme.primary,
-                                                        leadingIconColor = MaterialTheme.colorScheme.primary,
-                                                        trailingIconColor = MaterialTheme.colorScheme.primary
-                                                    )
-                                                } else {
-                                                    MenuDefaults.itemColors()
-                                                }
-                                            )
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
-                            if (!isActressesListPage) {
+                            if (!isActressesListPage && !isSeriesListPage) {
                                 IconButton(onClick = {
                                     viewMode =
                                         if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
@@ -428,7 +461,7 @@ fun CategoryScreen(
         ) {
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
-                onRefresh = { loadVideos(isRefresh = true) },
+                onRefresh = { loadVideos(currentSort.ifEmpty { extractSortFromUrl(categoryHref) }, isRefresh = true) },
                 modifier = Modifier.fillMaxSize()
             ) {
                 Crossfade(
@@ -459,7 +492,7 @@ fun CategoryScreen(
                                         text = error ?: "加载失败",
                                         color = MaterialTheme.colorScheme.error
                                     )
-                                    Button(onClick = { loadVideos() }) {
+                                    Button(onClick = { loadVideos(currentSort.ifEmpty { extractSortFromUrl(categoryHref) }) }) {
                                         Text("重试")
                                     }
                                 }
@@ -480,6 +513,7 @@ fun CategoryScreen(
                                 Box(modifier = Modifier.fillMaxSize()) {
                                     LazyVerticalGrid(
                                         columns = GridCells.Adaptive(minSize = 150.dp),
+                                        state = seriesListState,
                                         modifier = Modifier.fillMaxSize(),
                                         contentPadding = PaddingValues(
                                             start = 16.dp,
@@ -490,10 +524,14 @@ fun CategoryScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        items(series) { seriesItem ->
+                                        items(
+                                            items = series,
+                                            key = { it.id }
+                                        ) { seriesItem ->
                                             SeriesCard(
                                                 series = seriesItem,
-                                                onClick = { onSeriesClick("series/${seriesItem.id}") }
+                                                onClick = { onSeriesClick("series/${seriesItem.id}") },
+                                                modifier = Modifier.animateItem()
                                             )
                                         }
                                         item(span = { GridItemSpan(maxLineSpan) }) {
