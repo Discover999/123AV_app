@@ -4,9 +4,11 @@ import com.android123av.app.models.VideoDetails
 import com.android123av.app.models.MenuItem
 import com.android123av.app.models.MenuSection
 import com.android123av.app.models.Actress
+import com.android123av.app.models.Genre
 import com.android123av.app.models.Series
 import com.android123av.app.models.PaginationInfo
 import com.android123av.app.models.SortOption
+import com.android123av.app.models.Studio
 import org.jsoup.Jsoup
 
 fun parseVideoDetails(html: String): VideoDetails? {
@@ -157,11 +159,9 @@ fun parseActressesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo 
     val titleElement = doc.selectFirst("div.title h2")
     val categoryTitle = titleElement?.text() ?: ""
     
-    val finalTitle = if (categoryTitle.isEmpty()) {
+    val finalTitle = categoryTitle.ifEmpty {
         val h1Element = doc.selectFirst("h1")
         h1Element?.text() ?: "热门女演员"
-    } else {
-        categoryTitle
     }
 
     val videoCountElement = doc.selectFirst("div.title div.text-muted")
@@ -176,6 +176,340 @@ fun parseActressesPaginationInfo(doc: org.jsoup.nodes.Document): PaginationInfo 
     val currentSort = doc.selectFirst("div.dropdown.show span.text-muted + span")?.text() ?: ""
     
     val sortOptions = mutableListOf<SortOption>()
+    
+    val sortDropdowns = doc.select("div.dropdown-menu")
+    for (sortDropdown in sortDropdowns) {
+        val dropdownParent = sortDropdown.parent()
+        val dropdownLabel = dropdownParent?.select("span.text-muted")?.firstOrNull()?.text() ?: ""
+        
+        if (dropdownLabel.contains("排序方式")) {
+            val sortItems = sortDropdown.select("a.dropdown-item")
+            sortItems.forEach { item ->
+                val href = item.attr("href")
+                if (href.contains("?sort=")) {
+                    val title = item.selectFirst("span")?.text() ?: ""
+                    val sortValue = href.substringAfter("?sort=").substringBefore("&")
+                    if (title.isNotEmpty() && sortValue.isNotEmpty()) {
+                        sortOptions.add(SortOption(title, sortValue, sortValue == currentSort))
+                    }
+                }
+            }
+            break
+        }
+    }
+
+    return PaginationInfo(
+        currentPage = currentPage,
+        totalPages = totalPages,
+        hasNextPage = hasNextPage || currentPage < totalPages,
+        hasPrevPage = hasPrevPage || currentPage > 1,
+        totalResults = totalResults,
+        categoryTitle = finalTitle,
+        videoCount = videoCount,
+        currentSort = currentSort,
+        sortOptions = sortOptions
+    )
+}
+
+fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>, PaginationInfo> {
+    return try {
+        val doc = Jsoup.parse(html)
+        val genresList = mutableListOf<Genre>()
+        
+        android.util.Log.d("parseGenresFromHtml", "HTML length: ${html.length}")
+        
+        var genreElements = doc.select("div.bl-item")
+        android.util.Log.d("parseGenresFromHtml", "Found ${genreElements.size} elements with selector 'div.bl-item'")
+        
+        if (genreElements.isEmpty()) {
+            genreElements = doc.select("div.box-item")
+            android.util.Log.d("parseGenresFromHtml", "No bl-item found, trying div.box-item: ${genreElements.size} elements")
+        }
+        
+        if (genreElements.isEmpty()) {
+            genreElements = doc.select("div.item")
+            android.util.Log.d("parseGenresFromHtml", "No box-item found, trying div.item: ${genreElements.size} elements")
+        }
+        
+        genreElements.forEachIndexed { index, element ->
+            android.util.Log.d("parseGenresFromHtml", "=== Element $index ===")
+            android.util.Log.d("parseGenresFromHtml", "HTML: ${element.outerHtml()}")
+            
+            val linkElement = element.selectFirst("a")
+            if (linkElement != null) {
+                val href = linkElement.attr("href").trim()
+                android.util.Log.d("parseGenresFromHtml", "Element $index: href=$href")
+                
+                val id = if (href.contains("/")) href.substringAfterLast("/") else href
+                android.util.Log.d("parseGenresFromHtml", "Element $index: id=$id")
+                
+                var name = element.attr("title").trim()
+                android.util.Log.d("parseGenresFromHtml", "Element $index: title attr=${element.attr("title")}")
+                
+                if (name.isEmpty()) {
+                    val nameElement = linkElement.selectFirst("div.name")
+                    if (nameElement != null) {
+                        name = nameElement.text().trim()
+                        android.util.Log.d("parseGenresFromHtml", "Element $index: name from div.name=$name")
+                    }
+                }
+                
+                if (name.isEmpty()) {
+                    val imgElement = linkElement.selectFirst("img")
+                    if (imgElement != null) {
+                        name = imgElement.attr("alt")?.trim() ?: ""
+                        android.util.Log.d("parseGenresFromHtml", "Element $index: name from img alt=$name")
+                    }
+                }
+                
+                if (name.isEmpty()) {
+                    val textElement = linkElement.selectFirst(":not(:has(img))")
+                    if (textElement != null) {
+                        name = textElement.text().trim()
+                        android.util.Log.d("parseGenresFromHtml", "Element $index: name from direct text=$name")
+                    }
+                }
+                
+                val videoCountText = linkElement.selectFirst("div.text-muted")?.text()?.trim() ?: 
+                                     element.selectFirst("div.text-muted")?.text()?.trim() ?: "0"
+                android.util.Log.d("parseGenresFromHtml", "Element $index: videoCountText=$videoCountText")
+                
+                val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
+                
+                if (name.isNotEmpty()) {
+                    val finalId = id.ifEmpty { "genre_${System.currentTimeMillis()}_$index" }
+                    genresList.add(Genre(finalId, name, videoCount))
+                    android.util.Log.d("parseGenresFromHtml", "Added genre: id=$finalId, name=$name, videoCount=$videoCount")
+                } else {
+                    android.util.Log.d("parseGenresFromHtml", "Element $index: Skipped - name is empty")
+                }
+            } else {
+                android.util.Log.d("parseGenresFromHtml", "Element $index: No link element found")
+            }
+        }
+        
+        android.util.Log.d("parseGenresFromHtml", "Total genres parsed: ${genresList.size}")
+        
+        val paginationInfo = parseGenresPaginationInfo(doc, currentUrl)
+        
+        Pair(genresList, paginationInfo)
+    } catch (e: Exception) {
+        android.util.Log.e("parseGenresFromHtml", "Error parsing genres", e)
+        e.printStackTrace()
+        Pair(emptyList(), PaginationInfo(1, 1, false, false))
+    }
+}
+
+fun parseGenresPaginationInfo(doc: org.jsoup.nodes.Document, currentUrl: String = ""): PaginationInfo {
+    val currentPageElement = doc.selectFirst("li.page-item.active span.page-link")
+    val currentPage = currentPageElement?.text()?.toIntOrNull() ?: 1
+
+    val pageLinks = doc.select("li.page-item a.page-link")
+    var totalPages = currentPage
+
+    pageLinks.forEach { link ->
+        val pageNum = link.text()?.toIntOrNull()
+        if (pageNum != null && pageNum > totalPages) {
+            totalPages = pageNum
+        }
+    }
+
+    val hasNextPage = doc.select("li.page-item a.page-link[rel*=next]").isNotEmpty()
+    val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
+
+    val titleElement = doc.selectFirst("div.title h2")
+    val categoryTitle = titleElement?.text() ?: ""
+    
+    val finalTitle = if (categoryTitle.isEmpty()) {
+        val h1Element = doc.selectFirst("h1")
+        h1Element?.text() ?: "类型"
+    } else {
+        categoryTitle
+    }
+
+    val videoCountElement = doc.selectFirst("div.title div.text-muted")
+    val videoCount = videoCountElement?.text() ?: ""
+
+    val totalResultsText = videoCount
+        .replace(",", "")
+        .replace("项目", "")
+        .replace(" ", "")
+    val totalResults = totalResultsText.toIntOrNull() ?: 0
+
+    val sortOptions = mutableListOf<SortOption>()
+    
+    val currentSort = if (currentUrl.contains("?sort=")) {
+        currentUrl.substringAfter("?sort=").substringBefore("&")
+    } else {
+        ""
+    }
+    
+    val sortDropdowns = doc.select("div.dropdown-menu")
+    for (sortDropdown in sortDropdowns) {
+        val dropdownParent = sortDropdown.parent()
+        val dropdownLabel = dropdownParent?.select("span.text-muted")?.firstOrNull()?.text() ?: ""
+        
+        if (dropdownLabel.contains("排序方式")) {
+            val sortItems = sortDropdown.select("a.dropdown-item")
+            sortItems.forEach { item ->
+                val href = item.attr("href")
+                if (href.contains("?sort=")) {
+                    val title = item.selectFirst("span")?.text() ?: ""
+                    val sortValue = href.substringAfter("?sort=").substringBefore("&")
+                    if (title.isNotEmpty() && sortValue.isNotEmpty()) {
+                        sortOptions.add(SortOption(title, sortValue, sortValue == currentSort))
+                    }
+                }
+            }
+            break
+        }
+    }
+
+    return PaginationInfo(
+        currentPage = currentPage,
+        totalPages = totalPages,
+        hasNextPage = hasNextPage || currentPage < totalPages,
+        hasPrevPage = hasPrevPage || currentPage > 1,
+        totalResults = totalResults,
+        categoryTitle = finalTitle,
+        videoCount = videoCount,
+        currentSort = currentSort,
+        sortOptions = sortOptions
+    )
+}
+
+fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studio>, PaginationInfo> {
+    return try {
+        val doc = Jsoup.parse(html)
+        val studiosList = mutableListOf<Studio>()
+        
+        android.util.Log.d("parseStudiosFromHtml", "HTML length: ${html.length}")
+        
+        var studioElements = doc.select("div.bl-item")
+        android.util.Log.d("parseStudiosFromHtml", "Found ${studioElements.size} elements with selector 'div.bl-item'")
+        
+        if (studioElements.isEmpty()) {
+            studioElements = doc.select("div.box-item")
+            android.util.Log.d("parseStudiosFromHtml", "No bl-item found, trying div.box-item: ${studioElements.size} elements")
+        }
+        
+        if (studioElements.isEmpty()) {
+            studioElements = doc.select("div.item")
+            android.util.Log.d("parseStudiosFromHtml", "No box-item found, trying div.item: ${studioElements.size} elements")
+        }
+        
+        studioElements.forEachIndexed { index, element ->
+            android.util.Log.d("parseStudiosFromHtml", "=== Element $index ===")
+            android.util.Log.d("parseStudiosFromHtml", "HTML: ${element.outerHtml()}")
+            
+            val linkElement = element.selectFirst("a")
+            if (linkElement != null) {
+                val href = linkElement.attr("href").trim()
+                android.util.Log.d("parseStudiosFromHtml", "Element $index: href=$href")
+                
+                val id = if (href.contains("/")) href.substringAfterLast("/") else href
+                android.util.Log.d("parseStudiosFromHtml", "Element $index: id=$id")
+                
+                var name = element.attr("title").trim()
+                android.util.Log.d("parseStudiosFromHtml", "Element $index: title attr=${element.attr("title")}")
+                
+                if (name.isEmpty()) {
+                    val nameElement = linkElement.selectFirst("div.name")
+                    if (nameElement != null) {
+                        name = nameElement.text().trim()
+                        android.util.Log.d("parseStudiosFromHtml", "Element $index: name from div.name=$name")
+                    }
+                }
+                
+                if (name.isEmpty()) {
+                    val imgElement = linkElement.selectFirst("img")
+                    if (imgElement != null) {
+                        name = imgElement.attr("alt")?.trim() ?: ""
+                        android.util.Log.d("parseStudiosFromHtml", "Element $index: name from img alt=$name")
+                    }
+                }
+                
+                if (name.isEmpty()) {
+                    val textElement = linkElement.selectFirst(":not(:has(img))")
+                    if (textElement != null) {
+                        name = textElement.text().trim()
+                        android.util.Log.d("parseStudiosFromHtml", "Element $index: name from direct text=$name")
+                    }
+                }
+                
+                val videoCountText = linkElement.selectFirst("div.text-muted")?.text()?.trim() ?: 
+                                     element.selectFirst("div.text-muted")?.text()?.trim() ?: "0"
+                android.util.Log.d("parseStudiosFromHtml", "Element $index: videoCountText=$videoCountText")
+                
+                val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
+                
+                if (name.isNotEmpty()) {
+                    val finalId = id.ifEmpty { "studio_${System.currentTimeMillis()}_$index" }
+                    studiosList.add(Studio(finalId, name, videoCount))
+                    android.util.Log.d("parseStudiosFromHtml", "Added studio: id=$finalId, name=$name, videoCount=$videoCount")
+                } else {
+                    android.util.Log.d("parseStudiosFromHtml", "Element $index: Skipped - name is empty")
+                }
+            } else {
+                android.util.Log.d("parseStudiosFromHtml", "Element $index: No link element found")
+            }
+        }
+        
+        android.util.Log.d("parseStudiosFromHtml", "Total studios parsed: ${studiosList.size}")
+        
+        val paginationInfo = parseStudiosPaginationInfo(doc, currentUrl)
+        
+        Pair(studiosList, paginationInfo)
+    } catch (e: Exception) {
+        android.util.Log.e("parseStudiosFromHtml", "Error parsing studios", e)
+        e.printStackTrace()
+        Pair(emptyList(), PaginationInfo(1, 1, false, false))
+    }
+}
+
+fun parseStudiosPaginationInfo(doc: org.jsoup.nodes.Document, currentUrl: String = ""): PaginationInfo {
+    val currentPageElement = doc.selectFirst("li.page-item.active span.page-link")
+    val currentPage = currentPageElement?.text()?.toIntOrNull() ?: 1
+
+    val pageLinks = doc.select("li.page-item a.page-link")
+    var totalPages = currentPage
+
+    pageLinks.forEach { link ->
+        val pageNum = link.text()?.toIntOrNull()
+        if (pageNum != null && pageNum > totalPages) {
+            totalPages = pageNum
+        }
+    }
+
+    val hasNextPage = doc.select("li.page-item a.page-link[rel*=next]").isNotEmpty()
+    val hasPrevPage = doc.select("li.page-item a.page-link[rel*=prev]").isNotEmpty()
+
+    val titleElement = doc.selectFirst("div.title h2")
+    val categoryTitle = titleElement?.text() ?: ""
+    
+    val finalTitle = if (categoryTitle.isEmpty()) {
+        val h1Element = doc.selectFirst("h1")
+        h1Element?.text() ?: "制作人"
+    } else {
+        categoryTitle
+    }
+
+    val videoCountElement = doc.selectFirst("div.title div.text-muted")
+    val videoCount = videoCountElement?.text() ?: ""
+
+    val totalResultsText = videoCount
+        .replace(",", "")
+        .replace("项目", "")
+        .replace(" ", "")
+    val totalResults = totalResultsText.toIntOrNull() ?: 0
+
+    val sortOptions = mutableListOf<SortOption>()
+    
+    val currentSort = if (currentUrl.contains("?sort=")) {
+        currentUrl.substringAfter("?sort=").substringBefore("&")
+    } else {
+        ""
+    }
     
     val sortDropdowns = doc.select("div.dropdown-menu")
     for (sortDropdown in sortDropdowns) {

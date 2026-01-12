@@ -186,5 +186,17 @@ data class Series(
     val videoCount: Int
 )
 
+data class Genre(
+    val id: String,
+    val name: String,
+    val videoCount: Int
+)
+
+data class Studio(
+    val id: String,
+    val name: String,
+    val videoCount: Int
+)
+
 
 

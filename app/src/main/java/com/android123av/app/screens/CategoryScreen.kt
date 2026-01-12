@@ -29,6 +29,8 @@ import com.android123av.app.components.*
 import com.android123av.app.models.Video
 import com.android123av.app.models.Actress
 import com.android123av.app.models.Series
+import com.android123av.app.models.Genre
+import com.android123av.app.models.Studio
 import com.android123av.app.models.ActressDetail
 import com.android123av.app.models.ViewMode
 import com.android123av.app.models.SortOption
@@ -36,14 +38,18 @@ import com.android123av.app.network.fetchVideosDataWithResponse
 import com.android123av.app.network.parseVideosFromHtml
 import com.android123av.app.network.fetchActresses
 import com.android123av.app.network.fetchSeries
+import com.android123av.app.network.fetchGenres
+import com.android123av.app.network.fetchStudios
 import com.android123av.app.network.SiteManager
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.android123av.app.models.PaginationInfo
 import kotlinx.coroutines.launch
 import java.io.IOException
 
@@ -86,10 +92,28 @@ fun CategoryScreen(
                            categoryHref.matches(Regex(".*/series\\?.*")) ||
                            categoryHref.matches(Regex("^series\\??$")) ||
                            categoryHref.matches(Regex("^series\\?.*"))
+    val isGenresListPage = categoryHref.matches(Regex(".*/genres\\??$")) || 
+                           categoryHref.matches(Regex(".*/genres\\?.*")) ||
+                           categoryHref.matches(Regex("^genres\\??$")) ||
+                           categoryHref.matches(Regex("^genres\\?.*"))
+    val isStudiosListPage = categoryHref.matches(Regex(".*/makers\\??$")) || 
+                            categoryHref.matches(Regex(".*/makers\\?.*")) ||
+                            categoryHref.matches(Regex("^makers\\??$")) ||
+                            categoryHref.matches(Regex("^makers\\?.*")) ||
+                            categoryHref.matches(Regex(".*/studios\\??$")) || 
+                            categoryHref.matches(Regex(".*/studios\\?.*")) ||
+                            categoryHref.matches(Regex("^studios\\??$")) ||
+                            categoryHref.matches(Regex("^studios\\?.*"))
+    val isStudioDetailPage = (categoryHref.matches(Regex(".*/makers/[^?]+$")) ||
+                             categoryHref.matches(Regex(".*/studios/[^?]+$"))) &&
+                             !categoryHref.matches(Regex(".*/makers\\??$")) &&
+                             !categoryHref.matches(Regex(".*/studios\\??$"))
 
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var actresses by remember { mutableStateOf<List<Actress>>(emptyList()) }
     var series by remember { mutableStateOf<List<Series>>(emptyList()) }
+    var genres by remember { mutableStateOf<List<Genre>>(emptyList()) }
+    var studios by remember { mutableStateOf<List<Studio>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(1) }
@@ -171,12 +195,58 @@ fun CategoryScreen(
                     series = newSeries
                     videos = emptyList()
                     actresses = emptyList()
+                    genres = emptyList()
+                    studios = emptyList()
                     info
+                } else if (isGenresListPage) {
+                    val (newGenres, info) = fetchGenres(url, currentPage)
+                    genres = newGenres
+                    videos = emptyList()
+                    actresses = emptyList()
+                    series = emptyList()
+                    studios = emptyList()
+                    info
+                } else if (isStudiosListPage) {
+                    val (newStudios, info) = fetchStudios(url, currentPage)
+                    studios = newStudios
+                    videos = emptyList()
+                    actresses = emptyList()
+                    series = emptyList()
+                    genres = emptyList()
+                    info
+                } else if (isStudioDetailPage) {
+                    val studioId = if (categoryHref.contains("/makers/")) {
+                        categoryHref.substringAfterLast("/makers/").substringBefore("?")
+                    } else {
+                        categoryHref.substringAfterLast("/studios/").substringBefore("?")
+                    }
+                    val studioName = studioId.replace("-", " ")
+                    val (newVideos, info) = parseVideosFromHtml(
+                        fetchVideosDataWithResponse(url, currentPage).second
+                    )
+                    videos = newVideos
+                    actresses = emptyList()
+                    series = emptyList()
+                    genres = emptyList()
+                    studios = emptyList()
+                    val studioInfo = PaginationInfo(
+                        currentPage = info.currentPage,
+                        totalPages = info.totalPages,
+                        hasNextPage = info.hasNextPage,
+                        hasPrevPage = info.hasPrevPage,
+                        categoryTitle = studioName,
+                        videoCount = info.videoCount,
+                        currentSort = info.currentSort,
+                        sortOptions = info.sortOptions
+                    )
+                    studioInfo
                 } else if (isActressesListPage) {
                     val (newActresses, info) = fetchActresses(url, currentPage)
                     actresses = newActresses
                     videos = emptyList()
                     series = emptyList()
+                    genres = emptyList()
+                    studios = emptyList()
                     info
                 } else {
                     val (newVideos, info) = parseVideosFromHtml(
@@ -185,6 +255,8 @@ fun CategoryScreen(
                     videos = newVideos
                     actresses = emptyList()
                     series = emptyList()
+                    genres = emptyList()
+                    studios = emptyList()
                     info
                 }
 
@@ -466,9 +538,9 @@ fun CategoryScreen(
             ) {
                 Crossfade(
                     targetState = when {
-                        isLoading && videos.isEmpty() && actresses.isEmpty() && series.isEmpty() -> CategoryContentState.LOADING
-                        error != null && videos.isEmpty() && actresses.isEmpty() && series.isEmpty() -> CategoryContentState.ERROR
-                        videos.isEmpty() && actresses.isEmpty() && series.isEmpty() -> CategoryContentState.EMPTY
+                        isLoading && videos.isEmpty() && actresses.isEmpty() && series.isEmpty() && genres.isEmpty() && studios.isEmpty() -> CategoryContentState.LOADING
+                        error != null && videos.isEmpty() && actresses.isEmpty() && series.isEmpty() && genres.isEmpty() && studios.isEmpty() -> CategoryContentState.ERROR
+                        videos.isEmpty() && actresses.isEmpty() && series.isEmpty() && genres.isEmpty() && studios.isEmpty() -> CategoryContentState.EMPTY
                         else -> CategoryContentState.CONTENT
                     },
                     animationSpec = tween(300),
@@ -524,10 +596,10 @@ fun CategoryScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        items(
+                                        itemsIndexed(
                                             items = series,
-                                            key = { it.id }
-                                        ) { seriesItem ->
+                                            key = { index, series -> series.id.ifEmpty { "series_$index" } }
+                                        ) { _, seriesItem ->
                                             SeriesCard(
                                                 series = seriesItem,
                                                 onClick = { onSeriesClick("series/${seriesItem.id}") },
@@ -562,11 +634,66 @@ fun CategoryScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        items(actresses) { actress ->
+                                        itemsIndexed(
+                                            items = actresses,
+                                            key = { index, actress -> actress.id.ifEmpty { "actress_$index" } }
+                                        ) { _, actress ->
                                             ActressCard(
                                                 actress = actress,
                                                 onClick = { onActressClick("actresses/${actress.id}") }
                                             )
+                                        }
+                                        item(span = { GridItemSpan(maxLineSpan) }) {
+                                            PaginationComponent(
+                                                currentPage = currentPage,
+                                                totalPages = totalPages,
+                                                hasNextPage = hasNextPage,
+                                                hasPrevPage = hasPrevPage,
+                                                isLoading = isLoading,
+                                                onLoadNext = { if (hasNextPage) currentPage++ },
+                                                onLoadPrevious = { if (hasPrevPage) currentPage-- },
+                                                onPageSelected = { page -> currentPage = page }
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (isGenresListPage || isStudiosListPage) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Adaptive(minSize = 150.dp),
+                                        state = seriesListState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(
+                                            start = 16.dp,
+                                            top = 16.dp,
+                                            end = 16.dp,
+                                            bottom = 16.dp
+                                        ),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        if (isGenresListPage) {
+                                            itemsIndexed(
+                                                items = genres,
+                                                key = { index, genre -> genre.id.ifEmpty { "genre_$index" } }
+                                            ) { _, genre ->
+                                                SeriesCard(
+                                                    series = Series(genre.id, genre.name, genre.videoCount),
+                                                    onClick = { onSeriesClick("genres/${genre.id}") },
+                                                    modifier = Modifier.animateItem()
+                                                )
+                                            }
+                                        } else {
+                                            itemsIndexed(
+                                                items = studios,
+                                                key = { index, studio -> studio.id.ifEmpty { "studio_$index" } }
+                                            ) { _, studio ->
+                                                SeriesCard(
+                                                    series = Series(studio.id, studio.name, studio.videoCount),
+                                                    onClick = { onSeriesClick("makers/${studio.id}") },
+                                                    modifier = Modifier.animateItem()
+                                                )
+                                            }
                                         }
                                         item(span = { GridItemSpan(maxLineSpan) }) {
                                             PaginationComponent(

@@ -922,7 +922,7 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
 
     val videoElements = doc.select("div.box-item")
 
-    videoElements.forEach { element ->
+    videoElements.forEachIndexed { index, element ->
         val thumbnailUrl = element.select("div.thumb img.lazyload").attr("data-src")
         
         val title = element.select("div.detail a").text() ?: "未知标题"
@@ -930,7 +930,8 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
         val duration = element.select("div.duration").text() ?: ""
         
         val href = element.select("div.detail a").attr("href")
-        val id = if (href.contains("/")) href.substringAfterLast("/") else href
+        val rawId = if (href.contains("/")) href.substringAfterLast("/") else href
+        val id = rawId.ifEmpty { "video_${System.currentTimeMillis()}_$index" }
         
         val favouriteElement = element.select("div.favourite").firstOrNull()
         val favouriteCount = favouriteElement?.let { el ->
@@ -1015,7 +1016,8 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
                 
                 val href = element.select("div.detail a").attr("href")
                 
-                val videoId = if (href.contains("/")) href.substringAfterLast("/") else href
+                val rawVideoId = if (href.contains("/")) href.substringAfterLast("/") else href
+                val videoId = rawVideoId.ifEmpty { "fav_${System.currentTimeMillis()}_$index" }
                 
                 val actualVideoUrl = null
                 
@@ -1351,6 +1353,82 @@ suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.
             }
         } catch (e: Exception) {
             android.util.Log.e("FetchSeries", "Error fetching series", e)
+            e.printStackTrace()
+            return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+        }
+    }
+}
+
+suspend fun fetchGenres(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Genre>, PaginationInfo> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val fullUrl = if (page > 1) {
+                if (url.contains("?")) {
+                    "$url&page=$page"
+                } else {
+                    "$url?page=$page"
+                }
+            } else {
+                url
+            }
+            
+            android.util.Log.d("FetchGenres", "Fetching genres from URL: $fullUrl")
+            val request = Request.Builder()
+                .url(fullUrl)
+                .headers(commonHeaders())
+                .build()
+            
+            val response = okHttpClient.newCall(request).execute()
+            android.util.Log.d("FetchGenres", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
+            
+            if (response.isSuccessful) {
+                val html = response.body?.string() ?: ""
+                android.util.Log.d("FetchGenres", "HTML length: ${html.length}")
+                return@withContext parseGenresFromHtml(html, fullUrl)
+            } else {
+                android.util.Log.e("FetchGenres", "Request failed with code: ${response.code}")
+                return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FetchGenres", "Error fetching genres", e)
+            e.printStackTrace()
+            return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+        }
+    }
+}
+
+suspend fun fetchStudios(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Studio>, PaginationInfo> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val fullUrl = if (page > 1) {
+                if (url.contains("?")) {
+                    "$url&page=$page"
+                } else {
+                    "$url?page=$page"
+                }
+            } else {
+                url
+            }
+            
+            android.util.Log.d("FetchStudios", "Fetching studios from URL: $fullUrl")
+            val request = Request.Builder()
+                .url(fullUrl)
+                .headers(commonHeaders())
+                .build()
+            
+            val response = okHttpClient.newCall(request).execute()
+            android.util.Log.d("FetchStudios", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
+            
+            if (response.isSuccessful) {
+                val html = response.body?.string() ?: ""
+                android.util.Log.d("FetchStudios", "HTML length: ${html.length}")
+                return@withContext parseStudiosFromHtml(html, fullUrl)
+            } else {
+                android.util.Log.e("FetchStudios", "Request failed with code: ${response.code}")
+                return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FetchStudios", "Error fetching studios", e)
             e.printStackTrace()
             return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
