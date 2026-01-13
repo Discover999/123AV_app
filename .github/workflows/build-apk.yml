@@ -1,0 +1,84 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Decode keystore
+        if: inputs.build_type == 'release'
+        run: |
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+
+      - name: Create signing properties
+        if: inputs.build_type == 'release'
+        run: |
+          cat > signing.properties <<EOF
+          storeFile=release.keystore
+          storePassword=${{ secrets.KEY_STORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+        shell: bash
+
+      - name: Build Debug APK
+        if: inputs.build_type == 'debug'
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK
+        if: inputs.build_type == 'release'
+        run: |
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.build_type }}-apk
+          path: app/build/outputs/apk/${{ inputs.build_type }}/
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Run lint
+        run: ./gradlew lint --stacktrace
