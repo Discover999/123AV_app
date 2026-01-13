@@ -98,12 +98,12 @@ fun clearVideoUrlCache() {
 
 fun warmupCache(context: android.content.Context, videoId: String) {
     if (videoId.isBlank() || videoId.startsWith("fav_")) return
-    
-    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+
+    CoroutineScope(Dispatchers.IO).launch {
         try {
             val url = fetchVideoUrlSync(videoId)
             cacheVideoUrl(videoId, url)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
 }
@@ -271,14 +271,7 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
             webView = WebView(context)
             val currentWebView = webView ?: return@withContext
             
-            val settings = currentWebView.settings
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = USER_AGENT
-            settings.cacheMode = WebSettings.LOAD_NO_CACHE
-            
-            currentWebView.setLayerType(View.LAYER_TYPE_NONE, null)
+            configureWebView(currentWebView)
             
             currentWebView.webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -320,7 +313,6 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
             currentWebView.loadUrl(videoDetailUrl)
             
         } catch (e: Exception) {
-            e.printStackTrace()
             if (!result.isCompleted) result.complete(null)
         }
     }
@@ -329,16 +321,11 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
 }
 
 suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String): List<VideoPart> = withContext(Dispatchers.IO) {
-    android.util.Log.d("VideoParts", "开始获取视频部分, videoId: $videoId")
-    
     if (videoId.isBlank()) {
-        android.util.Log.d("VideoParts", "videoId 为空，返回空列表")
         return@withContext emptyList()
     }
     
     val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
-    android.util.Log.d("VideoParts", "视频详情页 URL: $videoDetailUrl")
-    
     val result = CompletableDeferred<List<VideoPart>>()
     val partsList = mutableListOf<VideoPart>()
     
@@ -353,23 +340,19 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
         var isDestroyed = false
         
         fun cleanup() {
-            try {
-                if (isDestroyed) return
-                isDestroyed = true
-                timeoutHandler?.removeCallbacks(timeoutRunnable!!)
-                webView?.let { wv ->
-                    Handler(Looper.getMainLooper()).post {
-                        wv.stopLoading()
-                        wv.destroy()
-                    }
+            if (isDestroyed) return
+            isDestroyed = true
+            timeoutHandler?.removeCallbacks(timeoutRunnable!!)
+            webView?.let { wv ->
+                Handler(Looper.getMainLooper()).post {
+                    wv.stopLoading()
+                    wv.destroy()
                 }
-            } catch (e: Exception) {
             }
         }
         
         try {
             if (context is Activity && context.isFinishing) {
-                android.util.Log.d("VideoParts", "Activity 已结束，返回空列表")
                 result.complete(emptyList())
                 return@withContext
             }
@@ -377,117 +360,72 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
             webView = WebView(context)
             val currentWebView = webView ?: return@withContext
             
-            android.util.Log.d("VideoParts", "WebView 已创建")
-            
-            val settings = currentWebView.settings
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = USER_AGENT
-            settings.cacheMode = WebSettings.LOAD_NO_CACHE
-            
-            currentWebView.setLayerType(View.LAYER_TYPE_NONE, null)
-            
-            android.util.Log.d("VideoParts", "开始加载 URL: $videoDetailUrl")
+            configureWebView(currentWebView)
             
             currentWebView.webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
-                    android.util.Log.d("VideoParts", "页面开始加载: $url")
                     
                     if (isProcessing) return
                     
                     Handler(Looper.getMainLooper()).postDelayed({
                         if (isProcessing || isDestroyed) return@postDelayed
                         
-                        android.util.Log.d("VideoParts", "延迟执行 JavaScript 检查")
-                        try {
-                            val script = """
-                                (function() {
-                                    const parts = [];
-                                    const scenes = document.querySelectorAll('#scenes a');
-                                    console.log('找到的场景链接数量:', scenes.length);
-                                    scenes.forEach((link, index) => {
-                                        parts.push({
-                                            index: index,
-                                            name: link.textContent.trim() || (index + 1).toString()
-                                        });
+                        val script = """
+                            (function() {
+                                const parts = [];
+                                const scenes = document.querySelectorAll('#scenes a');
+                                scenes.forEach((link, index) => {
+                                    parts.push({
+                                        index: index,
+                                        name: link.textContent.trim() || (index + 1).toString()
                                     });
-                                    console.log('返回的部分数据:', JSON.stringify(parts));
-                                    return JSON.stringify(parts);
-                                })();
-                            """.trimIndent()
+                                });
+                                return JSON.stringify(parts);
+                            })();
+                        """.trimIndent()
+                        
+                        currentWebView.evaluateJavascript(script) { value ->
+                            if (isDestroyed) return@evaluateJavascript
                             
-                            currentWebView.evaluateJavascript(script) { value ->
-                                if (isDestroyed) {
-                                    android.util.Log.d("VideoParts", "WebView 已销毁，忽略 JavaScript 回调")
-                                    return@evaluateJavascript
-                                }
-                                
-                                android.util.Log.d("VideoParts", "JavaScript 返回值: $value")
-                                
-                                if (value == null || value == "null") {
-                                    android.util.Log.d("VideoParts", "返回值为 null")
-                                    result.complete(emptyList())
-                                    cleanup()
-                                    return@evaluateJavascript
-                                }
-                                
-                                var partsJson = value.trim()
-                                if (partsJson.startsWith("\"") && partsJson.endsWith("\"")) {
-                                    partsJson = partsJson.substring(1, partsJson.length - 1)
-                                    android.util.Log.d("VideoParts", "去掉外层引号后的 JSON: $partsJson")
-                                }
-                                
-                                partsJson = partsJson.replace("\\\"", "\"")
-                                android.util.Log.d("VideoParts", "替换转义引号后的 JSON: $partsJson")
-                                
-                                try {
-                                    val gson = Gson()
-                                    val jsonArray = com.google.gson.JsonParser.parseString(partsJson).asJsonArray
-                                    totalParts = jsonArray.size()
-                                    android.util.Log.d("VideoParts", "解析到 $totalParts 个视频部分")
-                                    
-                                    if (totalParts > 0) {
-                                        isProcessing = true
-                                        
-                                        jsonArray.forEach { element ->
-                                            val jsonObj = element.asJsonObject
-                                            val partName = jsonObj.get("name")?.asString ?: ""
-                                            partsList.add(VideoPart(partName, null))
-                                        }
-                                        android.util.Log.d("VideoParts", "初始化了 ${partsList.size} 个部分")
-                                        
-                                        clickNextPartByIndex(currentWebView, 0, partsList, result, foundResult, ::cleanup)
-                                    } else {
-                                        android.util.Log.d("VideoParts", "没有视频部分，返回空列表")
-                                        result.complete(emptyList())
-                                        cleanup()
-                                    }
-                                } catch (e: Exception) {
-                                    android.util.Log.e("VideoParts", "解析 JSON 失败", e)
-                                    e.printStackTrace()
-                                    result.complete(emptyList())
-                                    cleanup()
-                                }
+                            if (value == null || value == "null") {
+                                result.complete(emptyList())
+                                cleanup()
+                                return@evaluateJavascript
                             }
-                        } catch (e: Exception) {
-                            android.util.Log.e("VideoParts", "执行 JavaScript 失败", e)
-                            e.printStackTrace()
-                            result.complete(emptyList())
-                            cleanup()
+                            
+                            var partsJson = value.trim()
+                            if (partsJson.startsWith("\"") && partsJson.endsWith("\"")) {
+                                partsJson = partsJson.substring(1, partsJson.length - 1)
+                            }
+                            
+                            partsJson = partsJson.replace("\\\"", "\"")
+                            
+                            try {
+                                val gson = Gson()
+                                val jsonArray = com.google.gson.JsonParser.parseString(partsJson).asJsonArray
+                                totalParts = jsonArray.size()
+                                
+                                if (totalParts > 0) {
+                                    isProcessing = true
+                                    
+                                    jsonArray.forEach { element ->
+                                        val jsonObj = element.asJsonObject
+                                        val partName = jsonObj.get("name")?.asString ?: ""
+                                        partsList.add(VideoPart(partName, null))
+                                    }
+                                    
+                                    clickNextPartByIndex(currentWebView, 0, partsList, result, foundResult, ::cleanup)
+                                } else {
+                                    result.complete(emptyList())
+                                    cleanup()
+                                }
+                            } catch (e: Exception) {
+                                result.complete(emptyList())
+                                cleanup()
+                            }
                         }
                     }, 3000)
-                }
-                
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    android.util.Log.d("VideoParts", "页面加载完成: $url")
-                }
-                
-                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                    super.onReceivedError(view, request, error)
-                    android.util.Log.e("VideoParts", "页面加载错误: ${error?.description}")
                 }
                 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -505,11 +443,6 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                                      urlLower.contains(".mp4?") ||
                                      urlLower.contains(".mpd?")
                     
-                    if (isVideoFile) {
-                        android.util.Log.d("VideoParts", "拦截到视频请求: $url")
-                        android.util.Log.d("VideoParts", "当前部分索引: $currentPartIndex, 总数: $totalParts")
-                    }
-                    
                     if (isVideoFile && currentPartIndex < totalParts) {
                         val partName = partsList[currentPartIndex].name
                         
@@ -519,23 +452,17 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                         
                         if (isMainVideo) {
                             partsList[currentPartIndex] = VideoPart(partName, url)
-                            android.util.Log.d("VideoParts", "更新部分 $currentPartIndex ($partName) 的 URL: $url")
                             
                             Handler(Looper.getMainLooper()).postDelayed({
                                 currentPartIndex++
-                                android.util.Log.d("VideoParts", "当前部分索引增加到: $currentPartIndex")
                                 if (currentPartIndex >= totalParts) {
-                                    android.util.Log.d("VideoParts", "所有部分都已获取，返回结果")
                                     foundResult.set(true)
                                     result.complete(partsList.toList())
                                     cleanup()
                                 } else {
-                                    android.util.Log.d("VideoParts", "继续点击下一个部分: $currentPartIndex")
                                     clickNextPartByIndex(currentWebView, currentPartIndex, partsList, result, foundResult, ::cleanup)
                                 }
                             }, 1000)
-                        } else {
-                            android.util.Log.d("VideoParts", "跳过低清晰度视频: $url")
                         }
                     }
                     
@@ -545,9 +472,7 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
             
             timeoutHandler = Handler(context.mainLooper)
             timeoutRunnable = Runnable {
-                android.util.Log.w("VideoParts", "获取视频部分超时（30秒）")
                 if (!result.isCompleted) {
-                    android.util.Log.d("VideoParts", "超时返回已获取的部分: ${partsList.size} 个")
                     foundResult.set(true)
                     result.complete(partsList.toList())
                     cleanup()
@@ -557,10 +482,8 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
             timeoutHandler.postDelayed(timeoutRunnable, 30000)
             
             currentWebView.loadUrl(videoDetailUrl)
-            android.util.Log.d("VideoParts", "已调用 loadUrl，等待页面加载")
             
         } catch (e: Exception) {
-            e.printStackTrace()
             if (!result.isCompleted) result.complete(emptyList())
         }
     }
@@ -576,43 +499,33 @@ private fun clickNextPart(
     foundResult: AtomicBoolean,
     cleanup: () -> Unit
 ) {
-    android.util.Log.d("VideoParts", "clickNextPart 被调用")
-    
     if (foundResult.get() || result.isCompleted) {
-        android.util.Log.d("VideoParts", "结果已完成，退出")
         cleanup()
         return
     }
     
     val currentIndex = partsList.size
-    android.util.Log.d("VideoParts", "当前索引: $currentIndex, 总数: ${partsArray.size}")
     
     if (currentIndex >= partsArray.size) {
-        android.util.Log.d("VideoParts", "索引超出范围，退出")
         return
     }
     
     val partInfo = partsArray[currentIndex]
     val partName = partInfo["name"]?.toString() ?: (currentIndex + 1).toString()
     partsList.add(VideoPart(partName, null))
-    android.util.Log.d("VideoParts", "添加部分: $partName")
     
     val script = """
         (function() {
             const scenes = document.querySelectorAll('#scenes a');
-            console.log('点击部分: $currentIndex, 场景数量:', scenes.length);
             if (scenes[$currentIndex]) {
                 scenes[$currentIndex].click();
-                console.log('成功点击部分 $currentIndex');
                 return true;
             }
-            console.log('未找到部分 $currentIndex');
             return false;
         })();
     """.trimIndent()
     
     webView.evaluateJavascript(script) { value ->
-        android.util.Log.d("VideoParts", "点击结果: $value")
         if (value == "false") {
             foundResult.set(true)
             result.complete(partsList.toList())
@@ -629,35 +542,27 @@ private fun clickNextPartByIndex(
     foundResult: AtomicBoolean,
     cleanup: () -> Unit
 ) {
-    android.util.Log.d("VideoParts", "clickNextPartByIndex 被调用，索引: $index")
-    
     if (foundResult.get() || result.isCompleted) {
-        android.util.Log.d("VideoParts", "结果已完成，退出")
         cleanup()
         return
     }
     
     if (index >= partsList.size) {
-        android.util.Log.d("VideoParts", "索引超出范围，退出")
         return
     }
     
     val script = """
         (function() {
             const scenes = document.querySelectorAll('#scenes a');
-            console.log('点击部分: $index, 场景数量:', scenes.length);
             if (scenes[$index]) {
                 scenes[$index].click();
-                console.log('成功点击部分 $index');
                 return true;
             }
-            console.log('未找到部分 $index');
             return false;
         })();
     """.trimIndent()
     
     webView.evaluateJavascript(script) { value ->
-        android.util.Log.d("VideoParts", "点击结果: $value")
         if (value == "false") {
             foundResult.set(true)
             result.complete(partsList.toList())
@@ -696,6 +601,24 @@ fun getPersistentCookieJar(): PersistentCookieJar? = persistentCookieJar
 
 val gson = Gson()
 
+private fun configureWebView(webView: WebView) {
+    val settings = webView.settings
+    settings.javaScriptEnabled = true
+    settings.domStorageEnabled = true
+    settings.mediaPlaybackRequiresUserGesture = false
+    settings.userAgentString = USER_AGENT
+    settings.cacheMode = WebSettings.LOAD_NO_CACHE
+    webView.setLayerType(View.LAYER_TYPE_NONE, null)
+}
+
+private fun buildPaginatedUrl(baseUrl: String, page: Int): String {
+    return if (page > 1) {
+        if (baseUrl.contains("?")) "$baseUrl&page=$page" else "$baseUrl?page=$page"
+    } else {
+        baseUrl
+    }
+}
+
 suspend fun login(username: String, password: String): LoginResponse = withContext(Dispatchers.IO) {
     val loginUrl = SiteManager.buildZhUrl("ajax/user/signin")
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
@@ -729,7 +652,6 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
             )
         }
     } catch (e: IOException) {
-        e.printStackTrace()
         LoginResponse(
             status = 500,
             result = null,
@@ -762,7 +684,6 @@ suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
             )
         }
     } catch (e: IOException) {
-        e.printStackTrace()
         UserInfoResponse(
             status = 500,
             result = null
@@ -808,7 +729,6 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
             )
         }
     } catch (e: IOException) {
-        e.printStackTrace()
         EditProfileResponse(
             status = 500,
             result = null,
@@ -821,15 +741,7 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
 }
 
 suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<Video>, String> = withContext(Dispatchers.IO) {
-    val fullUrl = if (page > 1) {
-        if (url.contains("?")) {
-            "$url&page=$page"
-        } else {
-            "$url?page=$page"
-        }
-    } else {
-        url
-    }
+    val fullUrl = buildPaginatedUrl(url, page)
     
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
     
@@ -852,7 +764,6 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
             Pair(emptyList(), "")
         }
     } catch (e: IOException) {
-        e.printStackTrace()
         Pair(emptyList(), "")
     }
 }
@@ -907,7 +818,6 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
             }
         }
     } catch (e: Exception) {
-        e.printStackTrace()
     }
     
     return@withContext null
@@ -990,7 +900,6 @@ suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo>
             return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
     } catch (e: Exception) {
-        e.printStackTrace()
         return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
     }
 }
@@ -1019,19 +928,16 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
                 val rawVideoId = if (href.contains("/")) href.substringAfterLast("/") else href
                 val videoId = rawVideoId.ifEmpty { "fav_${System.currentTimeMillis()}_$index" }
                 
-                val actualVideoUrl = null
-                
                 if (title.isNotBlank()) {
                     videos.add(Video(
                         id = videoId,
                         title = title.trim(),
                         duration = duration,
                         thumbnailUrl = thumbnailUrl.ifBlank { "https://picsum.photos/id/${(200..300).random()}/300/200" },
-                        videoUrl = actualVideoUrl
+                        videoUrl = null
                     ))
                 }
-                
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
         }
         
@@ -1040,7 +946,6 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
         return Pair(videos, paginationInfo)
         
     } catch (e: Exception) {
-        e.printStackTrace()
         return Pair(emptyList(), PaginationInfo(1, 1, false, false))
     }
 }
@@ -1121,7 +1026,6 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
             null
         }
     } catch (e: Exception) {
-        e.printStackTrace()
         null
     }
     
@@ -1185,7 +1089,6 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
             return@withContext null
         }
     } catch (e: Exception) {
-        e.printStackTrace()
         return@withContext null
     }
 }
@@ -1193,7 +1096,6 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
 suspend fun fetchFavouriteStatus(videoId: String): Boolean = withContext(Dispatchers.IO) {
     try {
         val favouriteStatusUrl = SiteManager.buildZhUrl("ajax/user/favourite/status?type=movie&id=$videoId")
-        android.util.Log.d("Favourite", "🔍 查询收藏状态 URL: $favouriteStatusUrl")
         
         val request = Request.Builder()
             .url(favouriteStatusUrl)
@@ -1202,23 +1104,16 @@ suspend fun fetchFavouriteStatus(videoId: String): Boolean = withContext(Dispatc
         
         val response = okHttpClient.newCall(request).execute()
         
-        android.util.Log.d("Favourite", "📡 响应状态码: ${response.code}")
-        
         if (response.isSuccessful) {
             val responseBody = response.body?.string() ?: ""
-            android.util.Log.d("Favourite", "📄 响应内容: $responseBody")
             val gson = Gson()
             val jsonElement = gson.fromJson(responseBody, com.google.gson.JsonElement::class.java)
             val result = jsonElement.asJsonObject.get("result")?.asBoolean ?: false
-            android.util.Log.d("Favourite", "✅ 解析结果: $result")
             return@withContext result
         } else {
-            android.util.Log.e("Favourite", "❌ 请求失败，状态码: ${response.code}")
             return@withContext false
         }
     } catch (e: Exception) {
-        android.util.Log.e("Favourite", "❌ 查询收藏状态异常: ${e.message}", e)
-        e.printStackTrace()
         return@withContext false
     }
 }
@@ -1227,7 +1122,6 @@ suspend fun toggleFavourite(videoId: String, isAdd: Boolean): Boolean = withCont
     try {
         val favouriteUrl = SiteManager.buildZhUrl("ajax/user/favourite")
         val action = if (isAdd) "add" else "remove"
-        android.util.Log.d("Favourite", "🔄 切换收藏状态: $action, videoId: $videoId")
         
         val formBody = FormBody.Builder()
             .add("action", action)
@@ -1242,19 +1136,8 @@ suspend fun toggleFavourite(videoId: String, isAdd: Boolean): Boolean = withCont
             .build()
         
         val response = okHttpClient.newCall(request).execute()
-        android.util.Log.d("Favourite", "📡 切换收藏响应状态码: ${response.code}")
-        
-        if (response.isSuccessful) {
-            val responseBody = response.body?.string() ?: ""
-            android.util.Log.d("Favourite", "📄 切换收藏响应内容: $responseBody")
-            return@withContext true
-        } else {
-            android.util.Log.e("Favourite", "❌ 切换收藏失败，状态码: ${response.code}")
-            return@withContext false
-        }
+        return@withContext response.isSuccessful
     } catch (e: Exception) {
-        android.util.Log.e("Favourite", "❌ 切换收藏异常: ${e.message}", e)
-        e.printStackTrace()
         return@withContext false
     }
 }
@@ -1277,7 +1160,6 @@ suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSec
                 Pair(emptyList(), "Failed to fetch navigation menu: ${response.code}")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             Pair(emptyList(), "Error fetching navigation menu: ${e.message}")
         }
     }
@@ -1286,36 +1168,22 @@ suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSec
 suspend fun fetchActresses(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Actress>, PaginationInfo> {
     return withContext(Dispatchers.IO) {
         try {
-            val fullUrl = if (page > 1) {
-                if (url.contains("?")) {
-                    "$url&page=$page"
-                } else {
-                    "$url?page=$page"
-                }
-            } else {
-                url
-            }
+            val fullUrl = buildPaginatedUrl(url, page)
             
-            android.util.Log.d("FetchActresses", "Fetching actresses from URL: $fullUrl")
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
             
             val response = okHttpClient.newCall(request).execute()
-            android.util.Log.d("FetchActresses", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
-                android.util.Log.d("FetchActresses", "HTML length: ${html.length}")
                 return@withContext parseActressesFromHtml(html)
             } else {
-                android.util.Log.e("FetchActresses", "Request failed with code: ${response.code}")
                 return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
             }
         } catch (e: Exception) {
-            android.util.Log.e("FetchActresses", "Error fetching actresses", e)
-            e.printStackTrace()
             return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
     }
@@ -1324,36 +1192,22 @@ suspend fun fetchActresses(url: String, page: Int = 1): Pair<List<com.android123
 suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Series>, PaginationInfo> {
     return withContext(Dispatchers.IO) {
         try {
-            val fullUrl = if (page > 1) {
-                if (url.contains("?")) {
-                    "$url&page=$page"
-                } else {
-                    "$url?page=$page"
-                }
-            } else {
-                url
-            }
+            val fullUrl = buildPaginatedUrl(url, page)
             
-            android.util.Log.d("FetchSeries", "Fetching series from URL: $fullUrl")
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
             
             val response = okHttpClient.newCall(request).execute()
-            android.util.Log.d("FetchSeries", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
-                android.util.Log.d("FetchSeries", "HTML length: ${html.length}")
                 return@withContext parseSeriesFromHtml(html, fullUrl)
             } else {
-                android.util.Log.e("FetchSeries", "Request failed with code: ${response.code}")
                 return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
             }
         } catch (e: Exception) {
-            android.util.Log.e("FetchSeries", "Error fetching series", e)
-            e.printStackTrace()
             return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
     }
@@ -1362,36 +1216,22 @@ suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.
 suspend fun fetchGenres(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Genre>, PaginationInfo> {
     return withContext(Dispatchers.IO) {
         try {
-            val fullUrl = if (page > 1) {
-                if (url.contains("?")) {
-                    "$url&page=$page"
-                } else {
-                    "$url?page=$page"
-                }
-            } else {
-                url
-            }
+            val fullUrl = buildPaginatedUrl(url, page)
             
-            android.util.Log.d("FetchGenres", "Fetching genres from URL: $fullUrl")
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
             
             val response = okHttpClient.newCall(request).execute()
-            android.util.Log.d("FetchGenres", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
-                android.util.Log.d("FetchGenres", "HTML length: ${html.length}")
                 return@withContext parseGenresFromHtml(html, fullUrl)
             } else {
-                android.util.Log.e("FetchGenres", "Request failed with code: ${response.code}")
                 return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
             }
         } catch (e: Exception) {
-            android.util.Log.e("FetchGenres", "Error fetching genres", e)
-            e.printStackTrace()
             return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
     }
@@ -1400,36 +1240,22 @@ suspend fun fetchGenres(url: String, page: Int = 1): Pair<List<com.android123av.
 suspend fun fetchStudios(url: String, page: Int = 1): Pair<List<com.android123av.app.models.Studio>, PaginationInfo> {
     return withContext(Dispatchers.IO) {
         try {
-            val fullUrl = if (page > 1) {
-                if (url.contains("?")) {
-                    "$url&page=$page"
-                } else {
-                    "$url?page=$page"
-                }
-            } else {
-                url
-            }
+            val fullUrl = buildPaginatedUrl(url, page)
             
-            android.util.Log.d("FetchStudios", "Fetching studios from URL: $fullUrl")
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
             
             val response = okHttpClient.newCall(request).execute()
-            android.util.Log.d("FetchStudios", "Response code: ${response.code}, isSuccessful: ${response.isSuccessful}")
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
-                android.util.Log.d("FetchStudios", "HTML length: ${html.length}")
                 return@withContext parseStudiosFromHtml(html, fullUrl)
             } else {
-                android.util.Log.e("FetchStudios", "Request failed with code: ${response.code}")
                 return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
             }
         } catch (e: Exception) {
-            android.util.Log.e("FetchStudios", "Error fetching studios", e)
-            e.printStackTrace()
             return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
         }
     }

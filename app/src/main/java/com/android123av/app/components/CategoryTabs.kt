@@ -21,27 +21,43 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+
+private object CategoryTabsDefaults {
+    val ChipCornerRadius = 20.dp
+    val AnimationDuration = 300
+    val ChipSpacing = 10.dp
+    val IconSize = 18.dp
+    val ChipPaddingHorizontal = 16.dp
+    val ChipPaddingVertical = 10.dp
+    val ContentSpacing = 8.dp
+    val RowPaddingHorizontal = 16.dp
+    val RowPaddingVertical = 8.dp
+}
 
 @Composable
 fun CategoryTabs(
     modifier: Modifier = Modifier,
     onCategoryChange: (String) -> Unit
 ) {
-    val categories = listOf(
-        CategoryInfo("新发布", Icons.Default.Star),
-        CategoryInfo("最近更新", Icons.Default.Refresh),
-        CategoryInfo("正在观看", Icons.Default.PlayArrow),
-        CategoryInfo("未审查", Icons.Default.Warning)
-    )
+    val categories = remember {
+        listOf(
+            CategoryInfo("新发布", Icons.Default.Star),
+            CategoryInfo("最近更新", Icons.Default.Refresh),
+            CategoryInfo("正在观看", Icons.Default.PlayArrow),
+            CategoryInfo("未审查", Icons.Default.Warning)
+        )
+    }
     var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(
+                horizontal = CategoryTabsDefaults.RowPaddingHorizontal,
+                vertical = CategoryTabsDefaults.RowPaddingVertical
+            ),
+        horizontalArrangement = Arrangement.spacedBy(CategoryTabsDefaults.ChipSpacing)
     ) {
         categories.forEachIndexed { index, category ->
             CategoryChip(
@@ -68,8 +84,7 @@ private fun CategoryChip(
         } else {
             MaterialTheme.colorScheme.surfaceVariant
         },
-        animationSpec = tween(300),
-        label = "chipBackground"
+        animationSpec = tween(CategoryTabsDefaults.AnimationDuration)
     )
 
     val contentColor by animateColorAsState(
@@ -78,26 +93,30 @@ private fun CategoryChip(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = tween(300),
-        label = "chipContent"
+        animationSpec = tween(CategoryTabsDefaults.AnimationDuration)
     )
+
+    val chipShape = RoundedCornerShape(CategoryTabsDefaults.ChipCornerRadius)
 
     Surface(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(chipShape)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
+        shape = chipShape,
         color = backgroundColor
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier.padding(
+                horizontal = CategoryTabsDefaults.ChipPaddingHorizontal,
+                vertical = CategoryTabsDefaults.ChipPaddingVertical
+            ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(CategoryTabsDefaults.ContentSpacing)
         ) {
             Icon(
                 imageVector = category.icon,
                 contentDescription = null,
-                modifier = Modifier.size(18.sp.value.dp),
+                modifier = Modifier.size(CategoryTabsDefaults.IconSize),
                 tint = contentColor
             )
             Text(
