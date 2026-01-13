@@ -83,5 +83,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
       - name: Run lint
         run: ./gradlew lint --stacktrace
