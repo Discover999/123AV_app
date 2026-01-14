@@ -11,6 +11,20 @@ android {
         version = release(36)
     }
 
+    val keystoreProperties = file("keystore.properties").takeIf { it.exists() }?.readLines()?.associate { line ->
+        val (key, value) = line.split("=", limit = 2)
+        key.trim() to value.trim()
+    } ?: emptyMap()
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = keystoreProperties["storePassword"] ?: System.getenv("KEY_STORE_PASSWORD") ?: ""
+            keyAlias = keystoreProperties["keyAlias"] ?: System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = keystoreProperties["keyPassword"] ?: System.getenv("KEY_PASSWORD") ?: ""
+        }
+    }
+
     defaultConfig {
         applicationId = "com.android123av.app"
         minSdk = 30
@@ -23,6 +37,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

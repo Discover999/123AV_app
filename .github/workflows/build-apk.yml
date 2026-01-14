@@ -36,23 +36,17 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Decode keystore
+      - name: Setup signing configs
         if: inputs.build_type == 'release'
         run: |
           echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > app/release.keystore
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-
-      - name: Create signing properties
-        if: inputs.build_type == 'release'
-        run: |
-          cat > signing.properties <<EOF
-          storeFile=release.keystore
+          cat > app/keystore.properties <<EOF
           storePassword=${{ secrets.KEY_STORE_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
           EOF
-        shell: bash
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
 
       - name: Build Debug APK
         if: inputs.build_type == 'debug'
