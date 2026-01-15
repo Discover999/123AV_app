@@ -11,6 +11,22 @@ on:
         options:
           - debug
           - release
+      create_release:
+        description: '创建 GitHub Release?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      release_name:
+        description: 'Release 名称（如 v1.0.0）'
+        required: false
+        default: ''
+      release_body:
+        description: 'Release 说明'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -65,13 +81,22 @@ jobs:
           path: app/build/outputs/apk/${{ inputs.build_type }}/
           retention-days: 7
 
+      - name: Create GitHub Release
+        if: inputs.create_release == 'true' && inputs.build_type == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/release/*.apk
+          name: ${{ inputs.release_name || github.event.repository.name }}
+          body: ${{ inputs.release_body || 'Release build from GitHub Actions' }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
