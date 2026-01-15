@@ -93,7 +93,6 @@ jobs:
           tag_name: ${{ inputs.release_tag }}
           name: ${{ inputs.release_name || inputs.release_tag || github.event.repository.name }}
           body: ${{ inputs.release_body }}
-          generate_release_notes: true
           draft: false
           prerelease: false
         env:
