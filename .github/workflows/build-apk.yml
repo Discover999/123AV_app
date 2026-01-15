@@ -87,7 +87,8 @@ jobs:
         with:
           files: app/build/outputs/apk/release/*.apk
           name: ${{ inputs.release_name || github.event.repository.name }}
-          body: ${{ inputs.release_body || 'Release build from GitHub Actions' }}
+          body: ${{ inputs.release_body }}
+          generate_release_notes: true
           draft: false
           prerelease: false
         env:
