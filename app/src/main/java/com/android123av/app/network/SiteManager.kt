@@ -3,6 +3,7 @@ package com.android123av.app.network
 import android.content.Context
 import android.content.SharedPreferences
 import com.android123av.app.state.UserStateManager
+import com.android123av.app.constants.AppConstants
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,15 +17,10 @@ data class VideoSite(
 )
 
 object SiteManager {
-    private const val PREFS_NAME = "site_prefs"
-    private const val KEY_SELECTED_SITE_ID = "selected_site_id"
-
-    private const val DEFAULT_SITE_ID = "123av_com"
-
     private var sharedPreferences: SharedPreferences? = null
 
     private val defaultSite = VideoSite(
-        id = "123av_com",
+        id = AppConstants.DEFAULT_SITE_ID,
         name = "123AV 主站",
         baseUrl = "https://123av.com",
         description = "主站点",
@@ -69,13 +65,13 @@ object SiteManager {
     }
 
     fun initialize(context: Context) {
-        sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        sharedPreferences = context.getSharedPreferences(AppConstants.PREFS_NAME, Context.MODE_PRIVATE)
         loadSelectedSite()
     }
 
     private fun loadSelectedSite() {
         sharedPreferences?.let { prefs ->
-            val savedSiteId = prefs.getString(KEY_SELECTED_SITE_ID, DEFAULT_SITE_ID)
+            val savedSiteId = prefs.getString(AppConstants.KEY_SELECTED_SITE_ID, AppConstants.DEFAULT_SITE_ID)
             val site = availableSites.find { it.id == savedSiteId } ?: getDefaultSite()
             _selectedSite.value = site
         }
@@ -85,7 +81,7 @@ object SiteManager {
         val site = availableSites.find { it.id == siteId } ?: getDefaultSite()
         
         sharedPreferences?.edit()?.apply {
-            putString(KEY_SELECTED_SITE_ID, siteId)
+            putString(AppConstants.KEY_SELECTED_SITE_ID, siteId)
             apply()
         }
 

@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import com.android123av.app.state.ThemeStateManager
+import com.android123av.app.constants.AppConstants
 import androidx.compose.ui.platform.LocalConfiguration
 
 private val DarkColorScheme = darkColorScheme(
@@ -34,8 +35,8 @@ fun MyApplicationTheme(
     val themeMode by ThemeStateManager.currentTheme.collectAsState()
 
     val isDarkTheme = when (themeMode) {
-        ThemeStateManager.THEME_LIGHT -> false
-        ThemeStateManager.THEME_DARK -> true
+        AppConstants.THEME_LIGHT -> false
+        AppConstants.THEME_DARK -> true
         else -> {
             val configuration = LocalConfiguration.current
             (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES

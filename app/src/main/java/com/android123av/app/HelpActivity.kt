@@ -11,13 +11,7 @@ import androidx.core.view.WindowCompat
 import com.android123av.app.screens.HelpScreen
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
-
-private fun ComponentActivity.updateStatusBarColor() {
-    val isLightTheme = !ThemeStateManager.isDarkTheme()
-    WindowCompat.getInsetsController(window, window.decorView).apply {
-        isAppearanceLightStatusBars = isLightTheme
-    }
-}
+import com.android123av.app.utils.ActivityUtils
 
 class HelpActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,13 +19,13 @@ class HelpActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         ThemeStateManager.initialize(this)
-        updateStatusBarColor()
+        ActivityUtils.updateStatusBarColor(this)
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
             
             LaunchedEffect(currentTheme) {
-                updateStatusBarColor()
+                ActivityUtils.updateStatusBarColor(this@HelpActivity)
             }
             
             MyApplicationTheme {

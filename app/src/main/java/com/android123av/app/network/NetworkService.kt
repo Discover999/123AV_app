@@ -201,7 +201,7 @@ private fun fetchVideoUrlSync(videoId: String): String? {
         .build()
     
     return try {
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             val doc = Jsoup.parse(html)
@@ -571,33 +571,13 @@ private fun clickNextPartByIndex(
     }
 }
 
-private var persistentCookieJar: PersistentCookieJar? = null
-
-lateinit var okHttpClient: OkHttpClient
-    private set
-
 fun initializeNetworkService(context: Context) {
-    if (persistentCookieJar == null) {
-        persistentCookieJar = PersistentCookieJar(context)
-    }
-    
-    val cacheDir = File(context.cacheDir, "http_cache")
-    val cache = Cache(cacheDir, 50 * 1024 * 1024)
-    
-    okHttpClient = OkHttpClient.Builder()
-        .cookieJar(persistentCookieJar!!)
-        .cache(cache)
-        .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
+    NetworkConfig.initialize(context)
 }
 
-fun getPersistentCookieJar(): PersistentCookieJar? = persistentCookieJar
+fun getOkHttpClient(): OkHttpClient = NetworkConfig.getOkHttpClient()
+
+fun getPersistentCookieJar(): PersistentCookieJar? = NetworkConfig.getPersistentCookieJar()
 
 val gson = Gson()
 
@@ -637,7 +617,7 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
         .build()
     
     try {
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
             val responseBody = response.body?.string() ?: ""
             gson.fromJson(responseBody, LoginResponse::class.java)
@@ -673,7 +653,7 @@ suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
         .build()
     
     try {
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
             val responseBody = response.body?.string() ?: ""
             gson.fromJson(responseBody, UserInfoResponse::class.java)
@@ -714,7 +694,7 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
         .build()
     
     try {
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
             val responseBody = response.body?.string() ?: ""
             gson.fromJson(responseBody, EditProfileResponse::class.java)
@@ -754,7 +734,7 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
         .build()
 
     try {
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
@@ -786,7 +766,7 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
             .headers(commonHeaders())
             .build()
         
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
@@ -890,7 +870,7 @@ suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo>
         .build()
     
     try {
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
@@ -1080,7 +1060,7 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
             .header("Origin", currentBaseUrl)
             .build()
         
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
@@ -1102,7 +1082,7 @@ suspend fun fetchFavouriteStatus(videoId: String): Boolean = withContext(Dispatc
             .headers(apiHeaders(SiteManager.buildZhUrl("v/$videoId")))
             .build()
         
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         
         if (response.isSuccessful) {
             val responseBody = response.body?.string() ?: ""
@@ -1135,7 +1115,7 @@ suspend fun toggleFavourite(videoId: String, isAdd: Boolean): Boolean = withCont
             .post(formBody)
             .build()
         
-        val response = okHttpClient.newCall(request).execute()
+        val response = getOkHttpClient().newCall(request).execute()
         return@withContext response.isSuccessful
     } catch (e: Exception) {
         return@withContext false
@@ -1151,7 +1131,7 @@ suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSec
                 .headers(commonHeaders())
                 .build()
             
-            val response = okHttpClient.newCall(request).execute()
+            val response = getOkHttpClient().newCall(request).execute()
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
                 val menuSections = parseNavigationMenu(html)
@@ -1175,7 +1155,7 @@ suspend fun fetchActresses(url: String, page: Int = 1): Pair<List<com.android123
                 .headers(commonHeaders())
                 .build()
             
-            val response = okHttpClient.newCall(request).execute()
+            val response = getOkHttpClient().newCall(request).execute()
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
@@ -1199,7 +1179,7 @@ suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.
                 .headers(commonHeaders())
                 .build()
             
-            val response = okHttpClient.newCall(request).execute()
+            val response = getOkHttpClient().newCall(request).execute()
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
@@ -1223,7 +1203,7 @@ suspend fun fetchGenres(url: String, page: Int = 1): Pair<List<com.android123av.
                 .headers(commonHeaders())
                 .build()
             
-            val response = okHttpClient.newCall(request).execute()
+            val response = getOkHttpClient().newCall(request).execute()
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
@@ -1247,7 +1227,7 @@ suspend fun fetchStudios(url: String, page: Int = 1): Pair<List<com.android123av
                 .headers(commonHeaders())
                 .build()
             
-            val response = okHttpClient.newCall(request).execute()
+            val response = getOkHttpClient().newCall(request).execute()
             
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""

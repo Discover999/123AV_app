@@ -23,14 +23,8 @@ import com.android123av.app.network.initializeNetworkService
 import com.android123av.app.state.SearchHistoryManager
 import com.android123av.app.state.rememberAppState
 import com.android123av.app.ui.theme.MyApplicationTheme
+import com.android123av.app.utils.ActivityUtils
 import java.io.File
-
-private fun updateStatusBarColor(activity: ComponentActivity) {
-    val isLightTheme = !ThemeStateManager.isDarkTheme()
-    WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
-        isAppearanceLightStatusBars = isLightTheme
-    }
-}
 
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
@@ -62,13 +56,13 @@ class MainActivity : ComponentActivity() {
         SearchHistoryManager.initialize(this)
 
         enableEdgeToEdge()
-        updateStatusBarColor(this)
+        ActivityUtils.updateStatusBarColor(this)
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
             
             LaunchedEffect(currentTheme) {
-                updateStatusBarColor(this@MainActivity)
+                ActivityUtils.updateStatusBarColor(this@MainActivity)
             }
             
             MyApplicationTheme {

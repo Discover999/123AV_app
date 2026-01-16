@@ -9,23 +9,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.android123av.app.constants.AppConstants
 
 object SearchHistoryManager {
-    private const val PREFS_NAME = "search_history_prefs"
-    private const val KEY_SEARCH_HISTORY = "search_history"
-    
     private var sharedPreferences: SharedPreferences? = null
     
     var searchHistory by mutableStateOf<List<String>>(emptyList())
         private set
     
     fun initialize(context: Context) {
-        sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        sharedPreferences = context.getSharedPreferences(AppConstants.SEARCH_HISTORY_PREFS_NAME, Context.MODE_PRIVATE)
         loadSearchHistory()
     }
     
     private fun loadSearchHistory() {
-        val historyJson = sharedPreferences?.getString(KEY_SEARCH_HISTORY, "") ?: ""
+        val historyJson = sharedPreferences?.getString(AppConstants.KEY_SEARCH_HISTORY, "") ?: ""
         searchHistory = if (historyJson.isNotEmpty()) {
             try {
                 historyJson.split("|").filter { it.isNotEmpty() }
@@ -44,7 +42,7 @@ object SearchHistoryManager {
             val filtered = searchHistory.filter { it != query }
             listOf(query) + filtered
         } else {
-            listOf(query) + searchHistory.take(19)
+            listOf(query) + searchHistory.take(AppConstants.MAX_SEARCH_HISTORY)
         }
         
         searchHistory = newHistory
@@ -63,7 +61,7 @@ object SearchHistoryManager {
     
     private fun saveSearchHistory() {
         sharedPreferences?.edit()?.apply {
-            putString(KEY_SEARCH_HISTORY, searchHistory.joinToString("|"))
+            putString(AppConstants.KEY_SEARCH_HISTORY, searchHistory.joinToString("|"))
             apply()
         }
     }

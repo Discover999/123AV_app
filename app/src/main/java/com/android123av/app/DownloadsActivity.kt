@@ -9,13 +9,7 @@ import androidx.core.view.WindowCompat
 import com.android123av.app.screens.DownloadsScreen
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
-
-private fun ComponentActivity.updateStatusBarColor() {
-    val isLightTheme = !ThemeStateManager.isDarkTheme()
-    WindowCompat.getInsetsController(window, window.decorView).apply {
-        isAppearanceLightStatusBars = isLightTheme
-    }
-}
+import com.android123av.app.utils.ActivityUtils
 
 class DownloadsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,13 +17,13 @@ class DownloadsActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         ThemeStateManager.initialize(this)
-        updateStatusBarColor()
+        ActivityUtils.updateStatusBarColor(this)
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
             
             LaunchedEffect(currentTheme) {
-                updateStatusBarColor()
+                ActivityUtils.updateStatusBarColor(this@DownloadsActivity)
             }
             
             MyApplicationTheme {

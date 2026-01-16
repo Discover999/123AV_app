@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.android123av.app.state.DownloadPathManager
 import com.android123av.app.state.ThemeStateManager
+import com.android123av.app.constants.AppConstants
 import kotlinx.coroutines.flow.collectLatest
 import java.io.File
 
@@ -99,8 +100,8 @@ fun SettingsScreen(
             SettingsItem(
                 title = "主题",
                 subtitle = when (currentTheme) {
-                    ThemeStateManager.THEME_LIGHT -> "亮色"
-                    ThemeStateManager.THEME_DARK -> "暗色"
+                    AppConstants.THEME_LIGHT -> "亮色"
+                    AppConstants.THEME_DARK -> "暗色"
                     else -> "跟随系统"
                 },
                 onClick = { showThemeDialog = true }
@@ -275,9 +276,9 @@ fun ThemeSelectionDialog(
     onDismiss: () -> Unit
 ) {
     val themes = listOf(
-        Triple(ThemeStateManager.THEME_LIGHT, "亮色", "使用亮色主题"),
-        Triple(ThemeStateManager.THEME_DARK, "暗色", "使用暗色主题"),
-        Triple(ThemeStateManager.THEME_SYSTEM, "跟随系统", "跟随系统设置")
+        Triple(AppConstants.THEME_LIGHT, "亮色", "使用亮色主题"),
+        Triple(AppConstants.THEME_DARK, "暗色", "使用暗色主题"),
+        Triple(AppConstants.THEME_SYSTEM, "跟随系统", "跟随系统设置")
     )
 
     AlertDialog(

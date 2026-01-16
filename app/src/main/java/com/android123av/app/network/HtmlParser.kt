@@ -99,16 +99,9 @@ fun parseActressesFromHtml(html: String): Pair<List<Actress>, PaginationInfo> {
         val doc = Jsoup.parse(html)
         val actresses = mutableListOf<Actress>()
         
-        android.util.Log.d("ActressParser", "HTML length: ${html.length}")
-        android.util.Log.d("ActressParser", "Looking for div.box-item elements...")
-        
         val actressElements = doc.select("div.box-item")
-        android.util.Log.d("ActressParser", "Found ${actressElements.size} div.box-item elements")
         
         actressElements.forEachIndexed { index, element ->
-            android.util.Log.d("ActressParser", "=== Element $index ===")
-            android.util.Log.d("ActressParser", "HTML: ${element.outerHtml()}")
-            
             val linkElement = element.selectFirst("a")
             if (linkElement != null) {
                 val name = linkElement.selectFirst("div.name")?.text()?.trim() ?: ""
@@ -119,15 +112,11 @@ fun parseActressesFromHtml(html: String): Pair<List<Actress>, PaginationInfo> {
                 val videoCountText = linkElement.selectFirst("div.detail div.text-muted")?.text()?.trim() ?: "0"
                 val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
                 
-                android.util.Log.d("ActressParser", "Actress - Name: '$name', ID: '$id', Avatar: '$avatarUrl', Count: $videoCount")
-                
                 if (name.isNotEmpty() && id.isNotEmpty()) {
                     actresses.add(Actress(id, name, avatarUrl, videoCount))
                 }
             }
         }
-        
-        android.util.Log.d("ActressParser", "Parsed ${actresses.size} actresses")
         
         val paginationInfo = parseActressesPaginationInfo(doc)
         
@@ -216,41 +205,29 @@ fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>
         val doc = Jsoup.parse(html)
         val genresList = mutableListOf<Genre>()
         
-        android.util.Log.d("parseGenresFromHtml", "HTML length: ${html.length}")
-        
         var genreElements = doc.select("div.bl-item")
-        android.util.Log.d("parseGenresFromHtml", "Found ${genreElements.size} elements with selector 'div.bl-item'")
         
         if (genreElements.isEmpty()) {
             genreElements = doc.select("div.box-item")
-            android.util.Log.d("parseGenresFromHtml", "No bl-item found, trying div.box-item: ${genreElements.size} elements")
         }
         
         if (genreElements.isEmpty()) {
             genreElements = doc.select("div.item")
-            android.util.Log.d("parseGenresFromHtml", "No box-item found, trying div.item: ${genreElements.size} elements")
         }
         
         genreElements.forEachIndexed { index, element ->
-            android.util.Log.d("parseGenresFromHtml", "=== Element $index ===")
-            android.util.Log.d("parseGenresFromHtml", "HTML: ${element.outerHtml()}")
-            
             val linkElement = element.selectFirst("a")
             if (linkElement != null) {
                 val href = linkElement.attr("href").trim()
-                android.util.Log.d("parseGenresFromHtml", "Element $index: href=$href")
                 
                 val id = if (href.contains("/")) href.substringAfterLast("/") else href
-                android.util.Log.d("parseGenresFromHtml", "Element $index: id=$id")
                 
                 var name = element.attr("title").trim()
-                android.util.Log.d("parseGenresFromHtml", "Element $index: title attr=${element.attr("title")}")
                 
                 if (name.isEmpty()) {
                     val nameElement = linkElement.selectFirst("div.name")
                     if (nameElement != null) {
                         name = nameElement.text().trim()
-                        android.util.Log.d("parseGenresFromHtml", "Element $index: name from div.name=$name")
                     }
                 }
                 
@@ -258,7 +235,6 @@ fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>
                     val imgElement = linkElement.selectFirst("img")
                     if (imgElement != null) {
                         name = imgElement.attr("alt")?.trim() ?: ""
-                        android.util.Log.d("parseGenresFromHtml", "Element $index: name from img alt=$name")
                     }
                 }
                 
@@ -266,29 +242,20 @@ fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>
                     val textElement = linkElement.selectFirst(":not(:has(img))")
                     if (textElement != null) {
                         name = textElement.text().trim()
-                        android.util.Log.d("parseGenresFromHtml", "Element $index: name from direct text=$name")
                     }
                 }
                 
                 val videoCountText = linkElement.selectFirst("div.text-muted")?.text()?.trim() ?: 
                                      element.selectFirst("div.text-muted")?.text()?.trim() ?: "0"
-                android.util.Log.d("parseGenresFromHtml", "Element $index: videoCountText=$videoCountText")
                 
                 val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
                 
                 if (name.isNotEmpty()) {
                     val finalId = id.ifEmpty { "genre_${System.currentTimeMillis()}_$index" }
                     genresList.add(Genre(finalId, name, videoCount))
-                    android.util.Log.d("parseGenresFromHtml", "Added genre: id=$finalId, name=$name, videoCount=$videoCount")
-                } else {
-                    android.util.Log.d("parseGenresFromHtml", "Element $index: Skipped - name is empty")
                 }
-            } else {
-                android.util.Log.d("parseGenresFromHtml", "Element $index: No link element found")
             }
         }
-        
-        android.util.Log.d("parseGenresFromHtml", "Total genres parsed: ${genresList.size}")
         
         val paginationInfo = parseGenresPaginationInfo(doc, currentUrl)
         
@@ -383,41 +350,29 @@ fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studi
         val doc = Jsoup.parse(html)
         val studiosList = mutableListOf<Studio>()
         
-        android.util.Log.d("parseStudiosFromHtml", "HTML length: ${html.length}")
-        
         var studioElements = doc.select("div.bl-item")
-        android.util.Log.d("parseStudiosFromHtml", "Found ${studioElements.size} elements with selector 'div.bl-item'")
         
         if (studioElements.isEmpty()) {
             studioElements = doc.select("div.box-item")
-            android.util.Log.d("parseStudiosFromHtml", "No bl-item found, trying div.box-item: ${studioElements.size} elements")
         }
         
         if (studioElements.isEmpty()) {
             studioElements = doc.select("div.item")
-            android.util.Log.d("parseStudiosFromHtml", "No box-item found, trying div.item: ${studioElements.size} elements")
         }
         
         studioElements.forEachIndexed { index, element ->
-            android.util.Log.d("parseStudiosFromHtml", "=== Element $index ===")
-            android.util.Log.d("parseStudiosFromHtml", "HTML: ${element.outerHtml()}")
-            
             val linkElement = element.selectFirst("a")
             if (linkElement != null) {
                 val href = linkElement.attr("href").trim()
-                android.util.Log.d("parseStudiosFromHtml", "Element $index: href=$href")
                 
                 val id = if (href.contains("/")) href.substringAfterLast("/") else href
-                android.util.Log.d("parseStudiosFromHtml", "Element $index: id=$id")
                 
                 var name = element.attr("title").trim()
-                android.util.Log.d("parseStudiosFromHtml", "Element $index: title attr=${element.attr("title")}")
                 
                 if (name.isEmpty()) {
                     val nameElement = linkElement.selectFirst("div.name")
                     if (nameElement != null) {
                         name = nameElement.text().trim()
-                        android.util.Log.d("parseStudiosFromHtml", "Element $index: name from div.name=$name")
                     }
                 }
                 
@@ -425,7 +380,6 @@ fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studi
                     val imgElement = linkElement.selectFirst("img")
                     if (imgElement != null) {
                         name = imgElement.attr("alt")?.trim() ?: ""
-                        android.util.Log.d("parseStudiosFromHtml", "Element $index: name from img alt=$name")
                     }
                 }
                 
@@ -433,29 +387,20 @@ fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studi
                     val textElement = linkElement.selectFirst(":not(:has(img))")
                     if (textElement != null) {
                         name = textElement.text().trim()
-                        android.util.Log.d("parseStudiosFromHtml", "Element $index: name from direct text=$name")
                     }
                 }
                 
                 val videoCountText = linkElement.selectFirst("div.text-muted")?.text()?.trim() ?: 
                                      element.selectFirst("div.text-muted")?.text()?.trim() ?: "0"
-                android.util.Log.d("parseStudiosFromHtml", "Element $index: videoCountText=$videoCountText")
                 
                 val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
                 
                 if (name.isNotEmpty()) {
                     val finalId = id.ifEmpty { "studio_${System.currentTimeMillis()}_$index" }
                     studiosList.add(Studio(finalId, name, videoCount))
-                    android.util.Log.d("parseStudiosFromHtml", "Added studio: id=$finalId, name=$name, videoCount=$videoCount")
-                } else {
-                    android.util.Log.d("parseStudiosFromHtml", "Element $index: Skipped - name is empty")
                 }
-            } else {
-                android.util.Log.d("parseStudiosFromHtml", "Element $index: No link element found")
             }
         }
-        
-        android.util.Log.d("parseStudiosFromHtml", "Total studios parsed: ${studiosList.size}")
         
         val paginationInfo = parseStudiosPaginationInfo(doc, currentUrl)
         
@@ -550,43 +495,33 @@ fun parseSeriesFromHtml(html: String, currentUrl: String = ""): Pair<List<Series
         val doc = Jsoup.parse(html)
         val seriesList = mutableListOf<Series>()
         
-        android.util.Log.d("parseSeriesFromHtml", "HTML length: ${html.length}")
-        
         val seriesElements = doc.select("div.bl-item")
-        android.util.Log.d("parseSeriesFromHtml", "Found ${seriesElements.size} series elements with selector 'div.bl-item'")
         
         seriesElements.forEachIndexed { index, element ->
             val linkElement = element.selectFirst("a")
             if (linkElement != null) {
                 val href = linkElement.attr("href").trim()
-                android.util.Log.d("parseSeriesFromHtml", "Element $index: href=$href")
                 
                 val id = if (href.contains("/")) href.substringAfterLast("/") else href
                 
                 var name = element.attr("title").trim()
-                android.util.Log.d("parseSeriesFromHtml", "Element $index: title attr=${element.attr("title")}")
                 
                 if (name.isEmpty()) {
                     val nameElement = linkElement.selectFirst("div.name")
                     if (nameElement != null) {
                         name = nameElement.text().trim()
-                        android.util.Log.d("parseSeriesFromHtml", "Element $index: name from div.name=$name")
                     }
                 }
                 
                 val videoCountText = linkElement.selectFirst("div.text-muted")?.text()?.trim() ?: "0"
-                android.util.Log.d("parseSeriesFromHtml", "Element $index: videoCountText=$videoCountText")
                 
                 val videoCount = videoCountText.replace("[^0-9]".toRegex(), "").toIntOrNull() ?: 0
                 
                 if (name.isNotEmpty() && id.isNotEmpty()) {
                     seriesList.add(Series(id, name, videoCount))
-                    android.util.Log.d("parseSeriesFromHtml", "Added series: id=$id, name=$name, videoCount=$videoCount")
                 }
             }
         }
-        
-        android.util.Log.d("parseSeriesFromHtml", "Total series parsed: ${seriesList.size}")
         
         val paginationInfo = parseSeriesPaginationInfo(doc, currentUrl)
         

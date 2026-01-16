@@ -15,13 +15,7 @@ import com.android123av.app.models.Video
 import com.android123av.app.screens.VideoPlayerScreen
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
-
-private fun ComponentActivity.updateStatusBarColor() {
-    val isLightTheme = !ThemeStateManager.isDarkTheme()
-    WindowCompat.getInsetsController(window, window.decorView).apply {
-        isAppearanceLightStatusBars = isLightTheme
-    }
-}
+import com.android123av.app.utils.ActivityUtils
 
 class VideoPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +23,7 @@ class VideoPlayerActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         ThemeStateManager.initialize(this)
-        updateStatusBarColor()
+        ActivityUtils.updateStatusBarColor(this)
         
         val video = intent.getParcelableExtra<Video>("video")
         val localVideoPath = intent.getStringExtra("localVideoPath")
@@ -41,7 +35,7 @@ class VideoPlayerActivity : ComponentActivity() {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
             
             LaunchedEffect(currentTheme) {
-                updateStatusBarColor()
+                ActivityUtils.updateStatusBarColor(this@VideoPlayerActivity)
             }
             
             MyApplicationTheme {

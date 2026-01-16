@@ -32,15 +32,9 @@ import androidx.core.view.WindowCompat
 import com.android123av.app.ui.theme.MyApplicationTheme
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.state.UserStateManager
+import com.android123av.app.utils.ActivityUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private fun ComponentActivity.updateStatusBarColor() {
-    val isLightTheme = !ThemeStateManager.isDarkTheme()
-    WindowCompat.getInsetsController(window, window.decorView).apply {
-        isAppearanceLightStatusBars = isLightTheme
-    }
-}
 
 class LoginActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,13 +42,13 @@ class LoginActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         ThemeStateManager.initialize(this)
-        updateStatusBarColor()
+        ActivityUtils.updateStatusBarColor(this)
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
             
             LaunchedEffect(currentTheme) {
-                updateStatusBarColor()
+                ActivityUtils.updateStatusBarColor(this@LoginActivity)
             }
             
             MyApplicationTheme {

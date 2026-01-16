@@ -12,13 +12,7 @@ import com.android123av.app.screens.SettingsScreen
 import com.android123av.app.state.DownloadPathManager
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
-
-private fun ComponentActivity.updateStatusBarColor() {
-    val isLightTheme = !ThemeStateManager.isDarkTheme()
-    WindowCompat.getInsetsController(window, window.decorView).apply {
-        isAppearanceLightStatusBars = isLightTheme
-    }
-}
+import com.android123av.app.utils.ActivityUtils
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,13 +21,13 @@ class SettingsActivity : ComponentActivity() {
         
         ThemeStateManager.initialize(this)
         DownloadPathManager.initialize(this)
-        updateStatusBarColor()
+        ActivityUtils.updateStatusBarColor(this)
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
             
             LaunchedEffect(currentTheme) {
-                updateStatusBarColor()
+                ActivityUtils.updateStatusBarColor(this@SettingsActivity)
             }
             
             MyApplicationTheme {
