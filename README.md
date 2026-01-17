@@ -54,6 +54,7 @@
 - **🎨 响应式 UI**：严格遵循 Material Design 3 设计规范
 - **🌐 网络优化**：OkHttp + Retrofit 高性能网络请求
 - **🔄 异步处理**：Kotlin Coroutines 协程异步编程
+- **🔧 代码优化**：统一的异常处理、数据库索引优化、消除魔法数字
 
 ---
 
@@ -114,6 +115,7 @@ app/src/main/java/com/android123av/app/
 │   ├── PaginationComponent.kt # 📄 智能分页组件
 │   └── VideoItem.kt          # 📹 视频列表项组件
 ├── 📂 constants/              # ⚙️ 常量定义
+│   ├── AppConstants.kt       # 📱 应用常量
 │   └── PlayerConstants.kt    # 🎬 播放器常量
 ├── 📂 download/                # ⬇️ 下载管理层
 │   ├── CachedVideoDetails.kt  # 💾 缓存视频详情
@@ -127,6 +129,8 @@ app/src/main/java/com/android123av/app/
 │   └── VideoDetails.kt        # 📋 视频详情模型
 ├── 📂 network/                 # 🌐 网络请求层
 │   ├── HtmlParser.kt          # 🔍 HTML 解析器
+│   ├── HtmlParserUtils.kt     # 🔧 HTML 解析工具
+│   ├── NetworkConfig.kt       # ⚙️ 网络配置
 │   ├── NetworkService.kt      # 🔗 网络请求服务
 │   ├── PersistentCookieJar.kt  # 🍪 Cookie 持久化
 │   └── SiteManager.kt         # 🌍 站点管理
@@ -162,6 +166,9 @@ app/src/main/java/com/android123av/app/
 │       ├── Color.kt           # 🌈 颜色定义
 │       ├── Theme.kt           # 🎯 应用主题
 │       └── Type.kt            # 🔤 字体排版
+├── 📂 utils/                   # 🔧 工具类层
+│   ├── ActivityUtils.kt       # 📱 Activity 工具
+│   └── ExceptionHandler.kt   # ⚠️ 异常处理工具
 ├── 📂 viewmodel/               # 🧠 ViewModel 层
 │   ├── VideoPlayerViewModel.kt # 🎬 播放器 ViewModel
 │   └── VideoPlayerViewModelFactory.kt # 🏭 ViewModel 工厂
