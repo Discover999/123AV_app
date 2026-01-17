@@ -3,7 +3,13 @@ package com.android123av.app.download
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "cached_video_details")
+@Entity(
+    tableName = "cached_video_details",
+    indices = [
+        androidx.room.Index(value = ["videoId"], unique = true),
+        androidx.room.Index(value = ["cachedAt"])
+    ]
+)
 data class CachedVideoDetails(
     @PrimaryKey
     val videoId: String,

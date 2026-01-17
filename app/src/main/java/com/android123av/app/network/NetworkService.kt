@@ -12,6 +12,8 @@ import android.os.Looper
 import android.view.View
 import android.webkit.WebResourceError
 import com.android123av.app.models.*
+import com.android123av.app.constants.AppConstants
+import com.android123av.app.constants.NetworkConstants
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.CompletableDeferred
@@ -53,15 +55,15 @@ fun apiHeaders(referer: String = ""): okhttp3.Headers {
         .build()
 }
 
-private val videoUrlCache = object : LinkedHashMap<String, CachedVideoUrl>(50, 0.75f, true) {
+private val videoUrlCache = object : LinkedHashMap<String, CachedVideoUrl>(NetworkConstants.VIDEO_URL_CACHE_SIZE, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedVideoUrl>?): Boolean {
-        return size > 50
+        return size > NetworkConstants.VIDEO_URL_CACHE_SIZE
     }
 }
 
 private val cacheLock = Any()
 
-private const val CACHE_EXPIRATION_MS = 30 * 60 * 1000L
+private const val CACHE_EXPIRATION_MS = NetworkConstants.CACHE_EXPIRATION_MS
 
 data class CachedVideoUrl(
     val url: String?,
@@ -108,7 +110,7 @@ fun warmupCache(context: android.content.Context, videoId: String) {
     }
 }
 
-suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: String, timeoutMs: Long = 8000): String? = withContext(Dispatchers.IO) {
+suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: String, timeoutMs: Long = AppConstants.DEFAULT_TIMEOUT_MS): String? = withContext(Dispatchers.IO) {
     if (videoId.isBlank()) {
         return@withContext null
     }
@@ -235,7 +237,7 @@ private fun fetchVideoUrlSync(videoId: String): String? {
     }
 }
 
-suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoId: String, timeoutMs: Long = 5000): String? = withContext(Dispatchers.IO) {
+suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoId: String, timeoutMs: Long = AppConstants.FAST_TIMEOUT_MS): String? = withContext(Dispatchers.IO) {
     if (videoId.isBlank()) {
         return@withContext null
     }
@@ -425,7 +427,7 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                                 cleanup()
                             }
                         }
-                    }, 3000)
+                    }, AppConstants.SHORT_TIMEOUT_MS)
                 }
                 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -462,7 +464,7 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                                 } else {
                                     clickNextPartByIndex(currentWebView, currentPartIndex, partsList, result, foundResult, ::cleanup)
                                 }
-                            }, 1000)
+                            }, AppConstants.VERY_SHORT_TIMEOUT_MS)
                         }
                     }
                     
@@ -479,7 +481,7 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                 }
             }
             
-            timeoutHandler.postDelayed(timeoutRunnable, 30000)
+            timeoutHandler.postDelayed(timeoutRunnable, AppConstants.LONG_TIMEOUT_MS)
             
             currentWebView.loadUrl(videoDetailUrl)
             
@@ -633,7 +635,7 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
         }
     } catch (e: IOException) {
         LoginResponse(
-            status = 500,
+            status = AppConstants.HTTP_STATUS_INTERNAL_ERROR,
             result = null,
             messages = Messages(
                 all = listOf("网络错误: ${e.message}"),
@@ -665,7 +667,7 @@ suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
         }
     } catch (e: IOException) {
         UserInfoResponse(
-            status = 500,
+            status = AppConstants.HTTP_STATUS_INTERNAL_ERROR,
             result = null
         )
     }
@@ -710,7 +712,7 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
         }
     } catch (e: IOException) {
         EditProfileResponse(
-            status = 500,
+            status = AppConstants.HTTP_STATUS_INTERNAL_ERROR,
             result = null,
             messages = Messages(
                 all = listOf("网络错误: ${e.message}"),
@@ -804,7 +806,7 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
 }
 
 suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: String): String? = 
-    fetchM3u8UrlWithWebViewFast(context, videoId, 5000)
+    fetchM3u8UrlWithWebViewFast(context, videoId, AppConstants.FAST_TIMEOUT_MS)
 
 fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     val videos = mutableListOf<Video>()
@@ -913,7 +915,7 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
                         id = videoId,
                         title = title.trim(),
                         duration = duration,
-                        thumbnailUrl = thumbnailUrl.ifBlank { "https://picsum.photos/id/${(200..300).random()}/300/200" },
+                        thumbnailUrl = thumbnailUrl.ifBlank { "https://picsum.photos/id/${(AppConstants.THUMBNAIL_RANDOM_MIN..AppConstants.THUMBNAIL_RANDOM_MAX).random()}/300/200" },
                         videoUrl = null
                     ))
                 }

@@ -43,4 +43,33 @@ object AppConstants {
     
     const val COOKIE_PREFIX = "cookie_"
     const val COOKIE_COUNT_KEY = "cookie_count"
+    
+    const val BYTES_IN_KB = 1024
+    const val BYTES_IN_MB = 1024 * 1024
+    const val BYTES_IN_GB = 1024 * 1024 * 1024
+    
+    const val SECONDS_IN_MINUTE = 60
+    const val SECONDS_IN_HOUR = 3600
+    
+    const val DEFAULT_CACHE_SIZE = 50
+    const val DEFAULT_HTTP_CACHE_SIZE_MB = 50
+    const val DEFAULT_CONNECTION_POOL_SIZE = 10
+    
+    const val DEFAULT_TIMEOUT_MS = 8000L
+    const val FAST_TIMEOUT_MS = 5000L
+    const val SHORT_TIMEOUT_MS = 3000L
+    const val VERY_SHORT_TIMEOUT_MS = 1000L
+    const val LONG_TIMEOUT_MS = 30000L
+    
+    const val HTTP_STATUS_INTERNAL_ERROR = 500
+    
+    const val THUMBNAIL_RANDOM_MIN = 200
+    const val THUMBNAIL_RANDOM_MAX = 300
+}
+
+object NetworkConstants {
+    const val HTTP_CACHE_SIZE = 50L * 1024 * 1024
+    const val CONNECTION_POOL_SIZE = 10
+    const val CACHE_EXPIRATION_MS = 30 * 60 * 1000L
+    const val VIDEO_URL_CACHE_SIZE = 50
 }

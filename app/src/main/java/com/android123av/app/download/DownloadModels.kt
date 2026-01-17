@@ -2,6 +2,7 @@ package com.android123av.app.download
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.android123av.app.constants.AppConstants
 
 enum class DownloadStatus {
     PENDING,
@@ -11,7 +12,14 @@ enum class DownloadStatus {
     FAILED
 }
 
-@Entity(tableName = "download_tasks")
+@Entity(
+    tableName = "download_tasks",
+    indices = [
+        androidx.room.Index(value = ["videoId"], unique = true),
+        androidx.room.Index(value = ["status"]),
+        androidx.room.Index(value = ["createdAt"])
+    ]
+)
 data class DownloadTask(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -52,26 +60,26 @@ data class DownloadTask(
     companion object {
         fun formatSpeed(bytesPerSecond: Long): String {
             return when {
-                bytesPerSecond >= 1024 * 1024 * 1024 -> String.format("%.2f GB/s", bytesPerSecond / (1024.0 * 1024.0 * 1024.0))
-                bytesPerSecond >= 1024 * 1024 -> String.format("%.2f MB/s", bytesPerSecond / (1024.0 * 1024.0))
-                bytesPerSecond >= 1024 -> String.format("%.2f KB/s", bytesPerSecond / 1024.0)
+                bytesPerSecond >= AppConstants.BYTES_IN_GB -> String.format("%.2f GB/s", bytesPerSecond / (AppConstants.BYTES_IN_GB.toDouble()))
+                bytesPerSecond >= AppConstants.BYTES_IN_MB -> String.format("%.2f MB/s", bytesPerSecond / (AppConstants.BYTES_IN_MB.toDouble()))
+                bytesPerSecond >= AppConstants.BYTES_IN_KB -> String.format("%.2f KB/s", bytesPerSecond / AppConstants.BYTES_IN_KB.toDouble())
                 else -> "$bytesPerSecond B/s"
             }
         }
 
         fun formatBytes(bytes: Long): String {
             return when {
-                bytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-                bytes >= 1024 * 1024 -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
-                bytes >= 1024 -> String.format("%.2f KB", bytes / 1024.0)
+                bytes >= AppConstants.BYTES_IN_GB -> String.format("%.2f GB", bytes / (AppConstants.BYTES_IN_GB.toDouble()))
+                bytes >= AppConstants.BYTES_IN_MB -> String.format("%.2f MB", bytes / (AppConstants.BYTES_IN_MB.toDouble()))
+                bytes >= AppConstants.BYTES_IN_KB -> String.format("%.2f KB", bytes / AppConstants.BYTES_IN_KB.toDouble())
                 else -> "$bytes B"
             }
         }
 
         fun formatDuration(seconds: Long): String {
-            val hours = seconds / 3600
-            val minutes = (seconds % 3600) / 60
-            val secs = seconds % 60
+            val hours = seconds / AppConstants.SECONDS_IN_HOUR
+            val minutes = (seconds % AppConstants.SECONDS_IN_HOUR) / AppConstants.SECONDS_IN_MINUTE
+            val secs = seconds % AppConstants.SECONDS_IN_MINUTE
             return if (hours > 0) {
                 String.format("%d:%02d:%02d", hours, minutes, secs)
             } else {
