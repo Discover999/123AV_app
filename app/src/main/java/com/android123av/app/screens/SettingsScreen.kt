@@ -14,12 +14,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.android123av.app.state.DownloadPathManager
@@ -37,7 +43,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showThemeDialog by remember { mutableStateOf(false) }
     var showPathDialog by remember { mutableStateOf(false) }
+    var showColorPickerDialog by remember { mutableStateOf(false) }
     var currentTheme by remember { mutableIntStateOf(ThemeStateManager.getTheme()) }
+    var dynamicColorEnabled by remember { mutableStateOf(ThemeStateManager.isDynamicColorEnabled()) }
     var currentPathDisplay by remember { mutableStateOf(DownloadPathManager.getDisplayPath(context)) }
     var currentPath by remember { mutableStateOf(DownloadPathManager.getCurrentPath(context)) }
     var hasStoragePermission by remember { mutableStateOf(checkStoragePermission(context)) }
@@ -52,6 +60,12 @@ fun SettingsScreen(
     LaunchedEffect(ThemeStateManager.currentTheme) {
         ThemeStateManager.currentTheme.collectLatest { theme ->
             currentTheme = theme
+        }
+    }
+
+    LaunchedEffect(ThemeStateManager.dynamicColor) {
+        ThemeStateManager.dynamicColor.collectLatest { enabled ->
+            dynamicColorEnabled = enabled
         }
     }
 
@@ -104,7 +118,14 @@ fun SettingsScreen(
                     AppConstants.THEME_DARK -> "暗色"
                     else -> "跟随系统"
                 },
-                onClick = { showThemeDialog = true }
+                onClick = { showThemeDialog = true },
+                icon = Icons.Default.Palette
+            )
+
+            DynamicColorSettingItem(
+                enabled = dynamicColorEnabled,
+                onToggle = { ThemeStateManager.setDynamicColor(it) },
+                onCustomColorClick = { showColorPickerDialog = true }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -128,7 +149,8 @@ fun SettingsScreen(
                         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                     }
                 },
-                showWarning = !hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                showWarning = !hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+                icon = Icons.Default.Notifications
             )
 
             SettingsItem(
@@ -139,7 +161,8 @@ fun SettingsScreen(
                         openAppSettings(context)
                     }
                 },
-                showWarning = !hasStoragePermission
+                showWarning = !hasStoragePermission,
+                icon = Icons.Default.Security
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -155,7 +178,8 @@ fun SettingsScreen(
                 title = "下载缓存位置",
                 subtitle = currentPathDisplay,
                 onClick = { showPathDialog = true },
-                enabled = hasStoragePermission
+                enabled = hasStoragePermission,
+                icon = Icons.Default.Folder
             )
         }
     }
@@ -184,6 +208,16 @@ fun SettingsScreen(
                 showPathDialog = false
             },
             onDismiss = { showPathDialog = false }
+        )
+    }
+
+    if (showColorPickerDialog) {
+        ColorPickerDialog(
+            onColorSelected = { colorValue ->
+                ThemeStateManager.setCustomColorSeed(colorValue)
+                showColorPickerDialog = false
+            },
+            onDismiss = { showColorPickerDialog = false }
         )
     }
 }
@@ -220,7 +254,8 @@ fun SettingsItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     showWarning: Boolean = false,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    icon: ImageVector? = null
 ) {
     val contentColor = if (enabled) {
         MaterialTheme.colorScheme.onSurfaceVariant
@@ -246,6 +281,15 @@ fun SettingsItem(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
@@ -484,6 +528,186 @@ fun DownloadPathDialog(
             }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+fun DynamicColorSettingItem(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onCustomColorClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ColorLens,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "主题色",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (enabled) "跟随系统主题色" else "使用自定义主题色",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle
+                )
+            }
+
+            if (!enabled) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Divider(
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "自定义主题色",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "点击选择主题色",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Card(
+                        modifier = Modifier
+                            .clickable { onCustomColorClick() },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ColorPreviewSquare()
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ColorPreviewSquare() {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.primary,
+            shape = MaterialTheme.shapes.small
+        ) {}
+    }
+}
+
+@Composable
+fun ColorPickerDialog(
+    onColorSelected: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colorOptions = listOf(
+        0xFF6750A4 to "紫色",
+        0xFF625B71 to "紫灰色",
+        0xFF7D5260 to "粉红色",
+        0xFFB00020 to "红色",
+        0xFF006B3C to "绿色",
+        0xFF006874 to "青色",
+        0xFF0D7377 to "蓝绿色",
+        0xFF1976D2 to "蓝色",
+        0xFF00796B to "蓝绿色",
+        0xFF5D4037 to "棕色"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "选择主题色",
+                style = MaterialTheme.typography.headlineSmall
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "选择应用的主题色",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                colorOptions.forEach { (colorValue, colorName) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onColorSelected(colorValue) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(40.dp),
+                            color = androidx.compose.ui.graphics.Color(colorValue),
+                            shape = MaterialTheme.shapes.small
+                        ) {}
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = colorName,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("取消")
             }

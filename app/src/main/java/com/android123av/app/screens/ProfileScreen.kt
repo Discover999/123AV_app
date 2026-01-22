@@ -45,7 +45,7 @@ fun ProfileHeader(
             .padding(16.dp)
             .clickable { onHeaderClick() },
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = MaterialTheme.shapes.large
@@ -63,14 +63,7 @@ fun ProfileHeader(
                         modifier = Modifier
                             .size(72.dp)
                             .clip(CircleShape)
-                            .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.secondary
-                                    )
-                                )
-                            ),
+                            .background(MaterialTheme.colorScheme.primary),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -88,13 +81,13 @@ fun ProfileHeader(
                             text = if (isLoggedIn) userName ?: "未知用户" else "点击登录",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         if (isLoggedIn && !userEmail.isNullOrEmpty()) {
                             Text(
                                 text = userEmail,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }
@@ -124,7 +117,7 @@ fun ProfileHeader(
                         .align(Alignment.CenterEnd)
                         .padding(12.dp)
                         .size(24.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
         }

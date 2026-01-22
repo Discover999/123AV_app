@@ -24,6 +24,8 @@ object AppConstants {
     const val KEY_USE_CUSTOM_PATH = "use_custom_path"
     
     const val KEY_THEME_MODE = "theme_mode"
+    const val KEY_DYNAMIC_COLOR = "dynamic_color"
+    const val KEY_CUSTOM_COLOR_SEED = "custom_color_seed"
     const val THEME_LIGHT = 0
     const val THEME_DARK = 1
     const val THEME_SYSTEM = 2

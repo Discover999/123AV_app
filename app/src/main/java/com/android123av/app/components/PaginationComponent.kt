@@ -200,10 +200,13 @@ private fun PageDisplay(
     isClickable: Boolean,
     onClick: () -> Unit
 ) {
+    val containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+    val onContainerColor = MaterialTheme.colorScheme.primary
+    
     val content = @Composable {
         Surface(
             shape = RoundedCornerShape(PaginationDefaults.ButtonCornerRadius),
-            color = MaterialTheme.colorScheme.primaryContainer
+            color = containerColor
         ) {
             Row(
                 modifier = Modifier.padding(
@@ -217,12 +220,12 @@ private fun PageDisplay(
                     text = "$currentPage",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = onContainerColor
                 )
                 Text(
                     text = "/ $totalPages",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    color = onContainerColor.copy(alpha = 0.7f)
                 )
             }
         }
