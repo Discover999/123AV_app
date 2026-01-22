@@ -112,7 +112,7 @@ fun SettingsScreen(
             )
 
             SettingsItem(
-                title = "主题",
+                title = "主题模式",
                 subtitle = when (currentTheme) {
                     AppConstants.THEME_LIGHT -> "亮色"
                     AppConstants.THEME_DARK -> "暗色"
