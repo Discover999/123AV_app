@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.view.WindowCompat
 import com.android123av.app.ui.theme.MyApplicationTheme
+import com.android123av.app.components.ForgotPasswordBottomSheet
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.state.UserStateManager
 import com.android123av.app.utils.ActivityUtils
@@ -77,6 +78,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(true) }
+    var showForgotPassword by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
@@ -236,7 +238,7 @@ fun LoginScreen(
                         }
                     },
                     onForgotPassword = {
-                        UserStateManager.updateLoginError("请联系客服重置密码")
+                        showForgotPassword = true
                     }
                 )
 
@@ -247,6 +249,34 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+    
+    if (showForgotPassword) {
+        var submitError by remember { mutableStateOf<String?>(null) }
+        
+        ForgotPasswordBottomSheet(
+            onDismiss = { showForgotPassword = false },
+            onSubmit = { username, email, newPassword, confirmPassword ->
+                coroutineScope.launch {
+                    try {
+                        val response = com.android123av.app.network.resetPassword(username, email, newPassword, confirmPassword)
+                        if (response.isSuccess) {
+                            showForgotPassword = false
+                            snackbarHostState.showSnackbar(
+                                message = "密码重置成功，请使用新密码登录",
+                                duration = SnackbarDuration.Short
+                            )
+                        } else {
+                            submitError = response.message
+                        }
+                    } catch (e: Exception) {
+                        submitError = "网络错误: ${e.message}"
+                    }
+                }
+            },
+            errorMessage = submitError,
+            onErrorShown = { submitError = null }
+        )
     }
 }
 

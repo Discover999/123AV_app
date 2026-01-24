@@ -25,7 +25,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Cache
 import okhttp3.ConnectionPool
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.io.IOException
@@ -645,6 +647,47 @@ suspend fun login(username: String, password: String): LoginResponse = withConte
     }
 }
 
+suspend fun resetPassword(
+    username: String,
+    email: String,
+    newPassword: String,
+    confirmPassword: String
+): ResetPasswordResponse = withContext(Dispatchers.IO) {
+    val resetUrl = SiteManager.buildZhUrl("ajax/user/reset")
+    val currentBaseUrl = SiteManager.getCurrentBaseUrl()
+    
+    val requestJson = gson.toJson(mapOf(
+        "username" to username,
+        "email" to email,
+        "password" to newPassword,
+        "password_confirmation" to confirmPassword
+    ))
+    
+    val requestBody = requestJson.toRequestBody("application/json".toMediaType())
+    
+    val request = Request.Builder()
+        .url(resetUrl)
+        .post(requestBody)
+        .headers(apiHeaders("$currentBaseUrl/"))
+        .build()
+    
+    try {
+        val response = getOkHttpClient().newCall(request).execute()
+        val responseBody = response.body?.string() ?: ""
+        val apiResponse = gson.fromJson(responseBody, ResetPasswordResponse::class.java)
+        apiResponse
+    } catch (e: Exception) {
+        ResetPasswordResponse(
+            status = AppConstants.HTTP_STATUS_INTERNAL_ERROR,
+            result = null,
+            messages = Messages(
+                all = listOf("网络错误: ${e.message}"),
+                keyed = listOf("网络错误: ${e.message}")
+            )
+        )
+    }
+}
+
 suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
     val userInfoUrl = SiteManager.buildZhUrl("ajax/user/info")
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
@@ -1139,10 +1182,27 @@ suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSec
                 val menuSections = parseNavigationMenu(html)
                 Pair(menuSections, null)
             } else {
-                Pair(emptyList(), "Failed to fetch navigation menu: ${response.code}")
+                val errorMessage = when (response.code) {
+                    500, 502, 503, 504 -> "服务器暂时无法响应，请稍后重试"
+                    403, 407 -> "网络访问受限，请检查网络设置"
+                    404 -> "服务暂时不可用"
+                    in 400..499 -> "请求失败，请稍后重试"
+                    in 500..599 -> "服务器错误，请稍后重试"
+                    else -> "网络连接失败，请检查网络状态"
+                }
+                Pair(emptyList(), errorMessage)
             }
         } catch (e: Exception) {
-            Pair(emptyList(), "Error fetching navigation menu: ${e.message}")
+            val errorMessage = when {
+                e.message?.contains("Connection reset", ignoreCase = true) == true -> "网络连接被重置，请检查网络状态"
+                e.message?.contains("Connection refused", ignoreCase = true) == true -> "无法连接到服务器，请检查网络"
+                e.message?.contains("timeout", ignoreCase = true) == true -> "连接超时，请检查网络后重试"
+                e.message?.contains("No address associated", ignoreCase = true) == true -> "网络不可用，请检查网络连接"
+                e.message?.contains("Network is unreachable", ignoreCase = true) == true -> "网络不可达，请检查网络设置"
+                e.message?.contains("socket", ignoreCase = true) == true -> "网络连接异常，请检查网络状态"
+                else -> "网络连接失败，请检查网络设置后重试"
+            }
+            Pair(emptyList(), errorMessage)
         }
     }
 }

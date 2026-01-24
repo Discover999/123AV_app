@@ -49,6 +49,19 @@ data class UserInfoResult(
     val email: String
 )
 
+// 重置密码响应数据类
+data class ResetPasswordResponse(
+    val status: Int,
+    val result: Any?,
+    val messages: Messages
+) {
+    val isSuccess: Boolean
+        get() = status == 200
+    
+    val message: String
+        get() = messages.all.firstOrNull() ?: ""
+}
+
 // 视频数据类
 data class Video(
     val id: String,
