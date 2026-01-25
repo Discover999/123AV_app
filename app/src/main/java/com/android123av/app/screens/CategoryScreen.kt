@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import com.android123av.app.models.PaginationInfo
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -84,30 +86,33 @@ fun CategoryScreen(
     onActressClick: (String) -> Unit = {},
     onSeriesClick: (String) -> Unit = {}
 ) {
-    val isActressesListPage = categoryHref.contains("actresses?") || 
-                              (categoryTitle.contains("女演员", ignoreCase = true) && categoryHref.contains("actresses"))
+    val isActressesListPage = categoryHref.contains("actresses?") ||
+            (categoryTitle.contains(
+                "女演员",
+                ignoreCase = true
+            ) && categoryHref.contains("actresses"))
     val isActressDetailPage =
         categoryHref.contains("actresses/") && !categoryHref.contains("actresses?")
-    val isSeriesListPage = categoryHref.matches(Regex(".*/series\\??$")) || 
-                           categoryHref.matches(Regex(".*/series\\?.*")) ||
-                           categoryHref.matches(Regex("^series\\??$")) ||
-                           categoryHref.matches(Regex("^series\\?.*"))
-    val isGenresListPage = categoryHref.matches(Regex(".*/genres\\??$")) || 
-                           categoryHref.matches(Regex(".*/genres\\?.*")) ||
-                           categoryHref.matches(Regex("^genres\\??$")) ||
-                           categoryHref.matches(Regex("^genres\\?.*"))
-    val isStudiosListPage = categoryHref.matches(Regex(".*/makers\\??$")) || 
-                            categoryHref.matches(Regex(".*/makers\\?.*")) ||
-                            categoryHref.matches(Regex("^makers\\??$")) ||
-                            categoryHref.matches(Regex("^makers\\?.*")) ||
-                            categoryHref.matches(Regex(".*/studios\\??$")) || 
-                            categoryHref.matches(Regex(".*/studios\\?.*")) ||
-                            categoryHref.matches(Regex("^studios\\??$")) ||
-                            categoryHref.matches(Regex("^studios\\?.*"))
+    val isSeriesListPage = categoryHref.matches(Regex(".*/series\\??$")) ||
+            categoryHref.matches(Regex(".*/series\\?.*")) ||
+            categoryHref.matches(Regex("^series\\??$")) ||
+            categoryHref.matches(Regex("^series\\?.*"))
+    val isGenresListPage = categoryHref.matches(Regex(".*/genres\\??$")) ||
+            categoryHref.matches(Regex(".*/genres\\?.*")) ||
+            categoryHref.matches(Regex("^genres\\??$")) ||
+            categoryHref.matches(Regex("^genres\\?.*"))
+    val isStudiosListPage = categoryHref.matches(Regex(".*/makers\\??$")) ||
+            categoryHref.matches(Regex(".*/makers\\?.*")) ||
+            categoryHref.matches(Regex("^makers\\??$")) ||
+            categoryHref.matches(Regex("^makers\\?.*")) ||
+            categoryHref.matches(Regex(".*/studios\\??$")) ||
+            categoryHref.matches(Regex(".*/studios\\?.*")) ||
+            categoryHref.matches(Regex("^studios\\??$")) ||
+            categoryHref.matches(Regex("^studios\\?.*"))
     val isStudioDetailPage = (categoryHref.matches(Regex(".*/makers/[^?]+$")) ||
-                             categoryHref.matches(Regex(".*/studios/[^?]+$"))) &&
-                             !categoryHref.matches(Regex(".*/makers\\??$")) &&
-                             !categoryHref.matches(Regex(".*/studios\\??$"))
+            categoryHref.matches(Regex(".*/studios/[^?]+$"))) &&
+            !categoryHref.matches(Regex(".*/makers\\??$")) &&
+            !categoryHref.matches(Regex(".*/studios\\??$"))
 
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var actresses by remember { mutableStateOf<List<Actress>>(emptyList()) }
@@ -129,9 +134,11 @@ fun CategoryScreen(
     var showSortMenu by remember { mutableStateOf(false) }
 
     val seriesListState = rememberLazyGridState()
+    val genericListState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
 
     var isTopBarExpanded by remember { mutableStateOf(true) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
 
     val topBarHeight by animateDpAsState(
         targetValue = if (isActressDetailPage && actressDetail != null) {
@@ -323,7 +330,32 @@ fun CategoryScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(topBarHeight)
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 4.dp)
+                            .then(
+                                if (isGenresListPage || isStudiosListPage || isSeriesListPage) {
+                                    Modifier.pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onTap = {
+                                                val currentTime = System.currentTimeMillis()
+                                                if (currentTime - lastTapTime < 300) {
+                                                    coroutineScope.launch {
+                                                        when {
+                                                            isGenresListPage || isStudiosListPage -> genericListState.animateScrollToItem(
+                                                                0
+                                                            )
+
+                                                            isSeriesListPage -> seriesListState.animateScrollToItem(
+                                                                0
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                lastTapTime = currentTime
+                                            }
+                                        )
+                                    }
+                                } else Modifier
+                            ),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
@@ -479,7 +511,9 @@ fun CategoryScreen(
                                                     onClick = {
                                                         if (!option.isSelected) {
                                                             coroutineScope.launch {
-                                                                seriesListState.animateScrollToItem(0)
+                                                                seriesListState.animateScrollToItem(
+                                                                    0
+                                                                )
                                                             }
                                                             loadVideosWithSort(option.value)
                                                         }
@@ -500,7 +534,7 @@ fun CategoryScreen(
                                     }
                                 }
                             }
-                            if (!isActressesListPage && !isSeriesListPage) {
+                            if (!isActressesListPage && !isSeriesListPage && !isGenresListPage && !isStudiosListPage) {
                                 IconButton(onClick = {
                                     viewMode =
                                         if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
@@ -533,7 +567,12 @@ fun CategoryScreen(
         ) {
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
-                onRefresh = { loadVideos(currentSort.ifEmpty { extractSortFromUrl(categoryHref) }, isRefresh = true) },
+                onRefresh = {
+                    loadVideos(
+                        currentSort.ifEmpty { extractSortFromUrl(categoryHref) },
+                        isRefresh = true
+                    )
+                },
                 modifier = Modifier.fillMaxSize()
             ) {
                 Crossfade(
@@ -564,7 +603,13 @@ fun CategoryScreen(
                                         text = error ?: "加载失败",
                                         color = MaterialTheme.colorScheme.error
                                     )
-                                    Button(onClick = { loadVideos(currentSort.ifEmpty { extractSortFromUrl(categoryHref) }) }) {
+                                    Button(onClick = {
+                                        loadVideos(currentSort.ifEmpty {
+                                            extractSortFromUrl(
+                                                categoryHref
+                                            )
+                                        })
+                                    }) {
                                         Text("重试")
                                     }
                                 }
@@ -602,8 +647,7 @@ fun CategoryScreen(
                                         ) { _, seriesItem ->
                                             SeriesCard(
                                                 series = seriesItem,
-                                                onClick = { onSeriesClick("series/${seriesItem.id}") },
-                                                modifier = Modifier.animateItem()
+                                                onClick = { onSeriesClick("series/${seriesItem.id}") }
                                             )
                                         }
                                         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -661,7 +705,7 @@ fun CategoryScreen(
                                 Box(modifier = Modifier.fillMaxSize()) {
                                     LazyVerticalGrid(
                                         columns = GridCells.Adaptive(minSize = 150.dp),
-                                        state = seriesListState,
+                                        state = genericListState,
                                         modifier = Modifier.fillMaxSize(),
                                         contentPadding = PaddingValues(
                                             start = 16.dp,
@@ -678,9 +722,12 @@ fun CategoryScreen(
                                                 key = { index, genre -> genre.id.ifEmpty { "genre_$index" } }
                                             ) { _, genre ->
                                                 SeriesCard(
-                                                    series = Series(genre.id, genre.name, genre.videoCount),
-                                                    onClick = { onSeriesClick("genres/${genre.id}") },
-                                                    modifier = Modifier.animateItem()
+                                                    series = Series(
+                                                        genre.id,
+                                                        genre.name,
+                                                        genre.videoCount
+                                                    ),
+                                                    onClick = { onSeriesClick("genres/${genre.id}") }
                                                 )
                                             }
                                         } else {
@@ -689,9 +736,12 @@ fun CategoryScreen(
                                                 key = { index, studio -> studio.id.ifEmpty { "studio_$index" } }
                                             ) { _, studio ->
                                                 SeriesCard(
-                                                    series = Series(studio.id, studio.name, studio.videoCount),
-                                                    onClick = { onSeriesClick("makers/${studio.id}") },
-                                                    modifier = Modifier.animateItem()
+                                                    series = Series(
+                                                        studio.id,
+                                                        studio.name,
+                                                        studio.videoCount
+                                                    ),
+                                                    onClick = { onSeriesClick("makers/${studio.id}") }
                                                 )
                                             }
                                         }
