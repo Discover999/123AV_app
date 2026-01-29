@@ -2013,93 +2013,56 @@ private fun ProgressBar(
 }
 
 @Composable
-private fun LockedOverlay(onUnlock: () -> Unit) {
+private fun LockedOverlay(
+    onUnlock: () -> Unit
+) {
+    var showUnlockIcon by remember { mutableStateOf(true) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(3000)
+        showUnlockIcon = false
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { onUnlock() })
-            }
+                detectTapGestures {
+                    if (!showUnlockIcon) {
+                        showUnlockIcon = true
+                        coroutineScope.launch {
+                            kotlinx.coroutines.delay(3000)
+                            showUnlockIcon = false
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
     ) {
-        // 锁定图标容器
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(100.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.4f))
-                .border(
-                    width = 2.dp,
-                    color = Color.White.copy(alpha = 0.3f),
-                    shape = CircleShape
-                )
-                .clickable { onUnlock() }
+        AnimatedVisibility(
+            visible = showUnlockIcon,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(200))
         ) {
-            Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = "已锁定，点击解锁",
-                tint = Color.White,
+            Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .align(Alignment.Center)
-            )
-            
-            // 添加解锁提示文字
-            Text(
-                text = "点击解锁",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
-            )
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { onUnlock() })
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LockOpen,
+                    contentDescription = "已锁定，点击解锁",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
         }
-        
-        // 添加四个角落的提示图标
-        Icon(
-            imageVector = Icons.Default.TouchApp,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.4f),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(24.dp)
-                .size(24.dp)
-        )
-        
-        Icon(
-            imageVector = Icons.Default.TouchApp,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.4f),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(24.dp)
-                .size(24.dp)
-                .rotate(90f)
-        )
-        
-        Icon(
-            imageVector = Icons.Default.TouchApp,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.4f),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(24.dp)
-                .size(24.dp)
-                .rotate(270f)
-        )
-        
-        Icon(
-            imageVector = Icons.Default.TouchApp,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.4f),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp)
-                .size(24.dp)
-                .rotate(180f)
-        )
     }
 }
 
