@@ -282,6 +282,10 @@ fun LoginScreen(
 
 @Composable
 private fun BrandHeader() {
+    val currentSite by com.android123av.app.network.SiteManager.selectedSite.collectAsState()
+    val brandText = if (currentSite.id == "1av_to") "1AV" else "123AV"
+    val avColor = Color(0xFFE85A83)
+    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -292,8 +296,8 @@ private fun BrandHeader() {
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFFE85A83),
-                            Color(0xFFE85A83).copy(alpha = 0.7f)
+                            avColor,
+                            avColor.copy(alpha = 0.7f)
                         )
                     )
                 ),
@@ -316,14 +320,14 @@ private fun BrandHeader() {
                         color = MaterialTheme.colorScheme.primary
                     )
                 ) {
-                    append("123")
+                    append(brandText.substring(0, brandText.length - 2))
                 }
                 withStyle(
                     style = SpanStyle(
-                        color = Color(0xFFE85A83)
+                        color = avColor
                     )
                 ) {
-                    append("AV")
+                    append(brandText.substring(brandText.length - 2))
                 }
             },
             style = MaterialTheme.typography.headlineLarge,
