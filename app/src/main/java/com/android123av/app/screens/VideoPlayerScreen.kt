@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.android123av.app.state.rememberUserState
 import androidx.compose.ui.unit.sp
@@ -145,6 +146,9 @@ fun VideoPlayerScreen(
     var downloadProgress by remember { mutableIntStateOf(0) }
     var isFavourite by remember { mutableStateOf(false) }
     var isTogglingFavourite by remember { mutableStateOf(false) }
+    var showInfoDialog by remember { mutableStateOf(false) }
+    
+    val videoTitle = cachedTitle ?: video?.title ?: ""
     
     fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
@@ -630,7 +634,36 @@ fun VideoPlayerScreen(
                                 onShowControlsTemporarily = { toggleControls() },
                                 onResizeModeChange = { toggleResizeMode() },
                                 onIsSeekingChange = { isSeeking = it },
-                                resizeMode = resizeMode
+                                resizeMode = resizeMode,
+                                videoTitle = cachedTitle ?: video?.title ?: "",
+                                videoWidth = videoWidth,
+                                videoHeight = videoHeight,
+                                isFavourite = isFavourite,
+                                onFavouriteToggle = {
+                                    if (video == null) return@PlayerControls
+                                    if (!userState.isLoggedIn) {
+                                        Toast.makeText(context, "请先登录", Toast.LENGTH_SHORT).show()
+                                        return@PlayerControls
+                                    }
+                                    coroutineScope.launch {
+                                        isTogglingFavourite = true
+                                        try {
+                                            val realId = videoDetails?.realId ?: video.id
+                                            val success = toggleFavourite(realId, !isFavourite)
+                                            if (success) {
+                                                isFavourite = !isFavourite
+                                                Toast.makeText(context, if (isFavourite) "已添加到收藏" else "已取消收藏", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "操作失败，请重试", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isTogglingFavourite = false
+                                        }
+                                    }
+                                },
+                                onInfoClick = { showInfoDialog = true }
                             )
                         }
                     } else {
@@ -708,7 +741,36 @@ fun VideoPlayerScreen(
                                         onShowControlsTemporarily = { toggleControls() },
                                         onResizeModeChange = { toggleResizeMode() },
                                         onIsSeekingChange = { isSeeking = it },
-                                        resizeMode = resizeMode
+                                        resizeMode = resizeMode,
+                                        videoTitle = cachedTitle ?: video?.title ?: "",
+                                        videoWidth = videoWidth,
+                                        videoHeight = videoHeight,
+                                        isFavourite = isFavourite,
+                                        onFavouriteToggle = {
+                                            if (video == null) return@PlayerControls
+                                            if (!userState.isLoggedIn) {
+                                                Toast.makeText(context, "请先登录", Toast.LENGTH_SHORT).show()
+                                                return@PlayerControls
+                                            }
+                                            coroutineScope.launch {
+                                                isTogglingFavourite = true
+                                                try {
+                                                    val realId = videoDetails?.realId ?: video.id
+                                                    val success = toggleFavourite(realId, !isFavourite)
+                                                    if (success) {
+                                                        isFavourite = !isFavourite
+                                                        Toast.makeText(context, if (isFavourite) "已添加到收藏" else "已取消收藏", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "操作失败，请重试", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                } finally {
+                                                    isTogglingFavourite = false
+                                                }
+                                            }
+                                        },
+                                        onInfoClick = { showInfoDialog = true }
                                     )
                                 }
 
@@ -880,7 +942,36 @@ fun VideoPlayerScreen(
                                         onShowControlsTemporarily = { toggleControls() },
                                         onResizeModeChange = { toggleResizeMode() },
                                         onIsSeekingChange = { isSeeking = it },
-                                        resizeMode = resizeMode
+                                        resizeMode = resizeMode,
+                                        videoTitle = cachedTitle ?: video?.title ?: "",
+                                        videoWidth = videoWidth,
+                                        videoHeight = videoHeight,
+                                        isFavourite = isFavourite,
+                                        onFavouriteToggle = {
+                                            if (video == null) return@PlayerControls
+                                            if (!userState.isLoggedIn) {
+                                                Toast.makeText(context, "请先登录", Toast.LENGTH_SHORT).show()
+                                                return@PlayerControls
+                                            }
+                                            coroutineScope.launch {
+                                                isTogglingFavourite = true
+                                                try {
+                                                    val realId = videoDetails?.realId ?: video.id
+                                                    val success = toggleFavourite(realId, !isFavourite)
+                                                    if (success) {
+                                                        isFavourite = !isFavourite
+                                                        Toast.makeText(context, if (isFavourite) "已添加到收藏" else "已取消收藏", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "操作失败，请重试", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                } finally {
+                                                    isTogglingFavourite = false
+                                                }
+                                            }
+                                        },
+                                        onInfoClick = { showInfoDialog = true }
                                     )
                                 }
 
@@ -977,6 +1068,161 @@ fun VideoPlayerScreen(
             }
         }
     }
+
+    VideoInfoDialog(
+        showDialog = showInfoDialog,
+        onDismiss = { showInfoDialog = false },
+        videoTitle = videoTitle,
+        videoWidth = videoWidth,
+        videoHeight = videoHeight,
+        videoUrl = videoUrl,
+        videoParts = videoParts
+    )
+}
+
+@Composable
+private fun VideoInfoDialog(
+    showDialog: Boolean,
+    onDismiss: () -> Unit,
+    videoTitle: String,
+    videoWidth: Int,
+    videoHeight: Int,
+    videoUrl: String?,
+    videoParts: List<com.android123av.app.models.VideoPart>
+) {
+    val context = LocalContext.current
+    var scrollOffset by remember { mutableStateOf(0) }
+    val textMeasurer = rememberTextMeasurer()
+    val titleTextWidth = with(LocalDensity.current) { textMeasurer.measure(videoTitle).size.width.toDp() }
+    val screenWidth = with(LocalDensity.current) { context.resources.displayMetrics.widthPixels.toDp() }
+    val needsScroll = titleTextWidth > screenWidth - 64.dp
+
+    LaunchedEffect(showDialog) {
+        if (showDialog && needsScroll) {
+            while (showDialog) {
+                delay(100)
+                scrollOffset += 1
+                if (scrollOffset > (titleTextWidth - screenWidth + 64.dp).value.toInt()) {
+                    delay(2000)
+                    scrollOffset = 0
+                }
+            }
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (needsScroll) Modifier.height(32.dp) else Modifier)
+                        .horizontalScroll(rememberScrollState(scrollOffset))
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("视频标题", videoTitle)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "标题已复制", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                ) {
+                    Text(
+                        text = videoTitle,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (videoWidth > 0 && videoHeight > 0) {
+                        Text(
+                            text = "分辨率: $videoWidth x $videoHeight",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    if (!videoUrl.isNullOrBlank()) {
+                        Text(
+                            text = "播放链接:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        ClickableUrlText(
+                            url = videoUrl,
+                            onUrlClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(videoUrl))
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+
+                    if (videoParts.isNotEmpty()) {
+                        Text(
+                            text = "部分视频:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        videoParts.forEachIndexed { index, part ->
+                            if (!part.url.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "部分${index + 1}: ",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                    ClickableUrlText(
+                                        url = part.url,
+                                        onUrlClick = {
+                                            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(part.url))
+                                            context.startActivity(intent)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("关闭")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ClickableUrlText(
+    url: String,
+    onUrlClick: () -> Unit
+) {
+    Text(
+        text = url,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onUrlClick),
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable
@@ -1174,10 +1420,16 @@ private fun PlayerControls(
     onShowControlsTemporarily: () -> Unit,
     onResizeModeChange: () -> Unit,
     onIsSeekingChange: (Boolean) -> Unit,
-    resizeMode: Int
+    resizeMode: Int,
+    videoTitle: String = "",
+    videoWidth: Int = 0,
+    videoHeight: Int = 0,
+    isFavourite: Boolean = false,
+    onFavouriteToggle: () -> Unit = {},
+    onInfoClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    
+
     var currentPosition by remember { mutableStateOf(exoPlayer?.currentPosition ?: 0L) }
     var bufferedPosition by remember { mutableStateOf(exoPlayer?.bufferedPosition ?: 0L) }
     var duration by remember { mutableStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
@@ -1255,7 +1507,15 @@ private fun PlayerControls(
                         onHideControls = onHideControlsNow,
                         onUpdateInteractionTime = onUpdateInteractionTime,
                         onResizeModeChange = onResizeModeChange,
-                        resizeMode = resizeMode
+                        resizeMode = resizeMode,
+                        videoTitle = videoTitle,
+                        videoWidth = videoWidth,
+                        videoHeight = videoHeight,
+                        isFavourite = isFavourite,
+                        onFavouriteToggle = onFavouriteToggle,
+                        onCastClick = { /* TODO: 投屏功能 */ },
+                        onInfoClick = onInfoClick,
+                        onSettingsClick = { /* TODO: 设置功能 */ }
                     )
                 } else {
                     LockedOverlay(onUnlock = onLock)
@@ -1294,7 +1554,15 @@ private fun VideoPlayerOverlay(
     onHideControls: () -> Unit,
     onUpdateInteractionTime: () -> Unit,
     onResizeModeChange: () -> Unit,
-    resizeMode: Int
+    resizeMode: Int,
+    videoTitle: String = "",
+    videoWidth: Int = 0,
+    videoHeight: Int = 0,
+    isFavourite: Boolean = false,
+    onFavouriteToggle: () -> Unit = {},
+    onCastClick: () -> Unit = {},
+    onInfoClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     var isLongPressed by remember { mutableStateOf(false) }
 
@@ -1368,11 +1636,8 @@ private fun VideoPlayerOverlay(
             enter = fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.98f, animationSpec = tween(220)),
             exit = fadeOut(animationSpec = tween(220)) + scaleOut(targetScale = 0.98f, animationSpec = tween(220))
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                // 顶栏：半透明背景，圆角按钮，保持轻量
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 顶栏：标题和分辨率信息，右侧功能按钮
                 TopBar(
                     isFullscreen = isFullscreen,
                     onBack = onBack,
@@ -1383,22 +1648,25 @@ private fun VideoPlayerOverlay(
                     currentSpeedIndex = currentSpeedIndex,
                     showSpeedSelector = showSpeedSelector,
                     onSpeedSelectorToggle = onSpeedSelectorToggle,
-                    onSpeedChange = onSpeedChange
+                    onSpeedChange = onSpeedChange,
+                    videoTitle = videoTitle,
+                    videoWidth = videoWidth,
+                    videoHeight = videoHeight,
+                    isFavourite = isFavourite,
+                    onFavouriteToggle = onFavouriteToggle,
+                    onCastClick = onCastClick,
+                    onInfoClick = onInfoClick,
+                    onSettingsClick = onSettingsClick,
+                    modifier = Modifier.align(Alignment.TopCenter)
                 )
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // 中央控制：大而明显的播放按钮，左右两侧小退进/快进按钮
+                // 中央控制：播放/暂停按钮
                 CenterControls(
                     isPlaying = isPlaying,
-                    onPlayPause = onPlayPause,
-                    onSeekBackward = onSeekBackward,
-                    onSeekForward = onSeekForward
+                    onPlayPause = onPlayPause
                 )
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // 底部进度条与速度选择（保持现有功能，但视觉更紧凑）
+                // 底部进度条：时间、进度条、总时长、全屏按钮
                 BottomBar(
                     currentPosition = currentPosition,
                     bufferedPosition = bufferedPosition,
@@ -1406,7 +1674,9 @@ private fun VideoPlayerOverlay(
                     progress = progress,
                     onSeek = onSeek,
                     onSeekStart = onSeekStart,
-                    onSeekStop = onSeekStop
+                    onSeekStop = onSeekStop,
+                    onFullscreen = onFullscreen,
+                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
         }
@@ -1475,94 +1745,91 @@ private fun TopBar(
     currentSpeedIndex: Int = 2,
     showSpeedSelector: Boolean = false,
     onSpeedSelectorToggle: () -> Unit = {},
-    onSpeedChange: (Int) -> Unit = {}
+    onSpeedChange: (Int) -> Unit = {},
+    videoTitle: String = "",
+    videoWidth: Int = 0,
+    videoHeight: Int = 0,
+    isFavourite: Boolean = false,
+    onFavouriteToggle: () -> Unit = {},
+    onCastClick: () -> Unit = {},
+    onInfoClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(12.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .background(Color.Transparent),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
-        Surface(
-            shape = CircleShape,
-            color = Color.Black.copy(alpha = 0.5f),
-            contentColor = Color.White,
-            tonalElevation = 4.dp,
-            onClick = onBack
+        // 左侧：标题和分辨率信息
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
-                modifier = Modifier
-                    .padding(10.dp)
-                    .size(20.dp)
+            Text(
+                text = videoTitle,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+            if (videoWidth > 0 && videoHeight > 0) {
+                Text(
+                    text = "$videoWidth x $videoHeight",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp
+                )
+            }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (isFullscreen) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.35f),
-                    contentColor = Color.White,
-                    tonalElevation = 2.dp,
-                    onClick = onResizeModeChange
-                ) {
-                    Icon(
-                        imageVector = when (resizeMode) {
-                            AspectRatioFrameLayout.RESIZE_MODE_FIT -> Icons.Default.AspectRatio
-                            AspectRatioFrameLayout.RESIZE_MODE_FILL -> Icons.Default.ZoomOutMap
-                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> Icons.Default.CenterFocusStrong
-                            else -> Icons.Default.AspectRatio
-                        },
-                        contentDescription = "缩放模式",
-                        modifier = Modifier
-                            .padding(10.dp)
-                            .size(18.dp)
-                    )
-                }
-            }
-
-            SpeedButton(
-                currentSpeedIndex = currentSpeedIndex,
-                showSpeedSelector = showSpeedSelector,
-                onSpeedSelectorToggle = onSpeedSelectorToggle,
-                onSpeedChange = onSpeedChange
+        // 右侧：功能按钮
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 投屏按钮
+            Icon(
+                imageVector = Icons.Default.Cast,
+                contentDescription = "投屏",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { onCastClick() }
             )
 
-            Surface(
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.35f),
-                contentColor = Color.White,
-                tonalElevation = 2.dp,
-                onClick = onLock
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "锁定",
-                    modifier = Modifier
-                        .padding(10.dp)
-                        .size(18.dp)
-                )
-            }
+            // 信息按钮
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "信息",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { onInfoClick() }
+            )
 
-            Surface(
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.35f),
-                contentColor = Color.White,
-                tonalElevation = 2.dp,
-                onClick = onFullscreen
-            ) {
-                Icon(
-                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    contentDescription = if (isFullscreen) "退出全屏" else "全屏",
-                    modifier = Modifier
-                        .padding(10.dp)
-                        .size(18.dp)
-                )
-            }
+            // 收藏按钮
+            Icon(
+                imageVector = if (isFavourite) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = "收藏",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { onFavouriteToggle() }
+            )
+
+            // 设置按钮
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "设置",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { onSettingsClick() }
+            )
         }
     }
 }
@@ -1654,32 +1921,15 @@ private fun SpeedButton(
 @Composable
 private fun CenterControls(
     isPlaying: Boolean,
-    onPlayPause: () -> Unit,
-    onSeekBackward: () -> Unit,
-    onSeekForward: () -> Unit
+    onPlayPause: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        ControlButton(
-            onClick = onSeekBackward,
-            icon = Icons.Default.Replay10,
-            contentDescription = "快退 10 秒",
-            size = 44.dp
-        )
-
         PlayPauseButton(
             isPlaying = isPlaying,
             onClick = onPlayPause
-        )
-
-        ControlButton(
-            onClick = onSeekForward,
-            icon = Icons.Default.Forward10,
-            contentDescription = "快进 10 秒",
-            size = 44.dp
         )
     }
 }
@@ -1689,23 +1939,47 @@ private fun PlayPauseButton(
     isPlaying: Boolean,
     onClick: () -> Unit
 ) {
-    val animatedScale by animateFloatAsState(targetValue = if (isPlaying) 0.98f else 1f, animationSpec = tween(180))
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPlaying) 0.95f else 1f,
+        animationSpec = tween(180),
+        label = "playPauseScale"
+    )
 
     Box(
         modifier = Modifier
-            .size(76.dp)
+            .size(64.dp)
             .scale(animatedScale)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-            contentDescription = if (isPlaying) "暂停" else "播放",
-            tint = Color.White,
-            modifier = Modifier.size(34.dp)
-        )
+        if (isPlaying) {
+            // 暂停图标 - 双竖线样式
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(8.dp)
+                        .height(32.dp)
+                        .background(Color.White)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(8.dp)
+                        .height(32.dp)
+                        .background(Color.White)
+                )
+            }
+        } else {
+            // 播放图标 - 三角形
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "播放",
+                tint = Color.White,
+                modifier = Modifier.size(48.dp)
+            )
+        }
     }
 }
 
@@ -1740,64 +2014,67 @@ private fun BottomBar(
     progress: Float,
     onSeek: (Float) -> Unit,
     onSeekStart: () -> Unit,
-    onSeekStop: () -> Unit
+    onSeekStop: () -> Unit,
+    onFullscreen: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     var showPreview by remember { mutableStateOf(false) }
     var previewPosition by remember { mutableStateOf(0L) }
     var previewProgress by remember { mutableStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
-    
+
     val displayProgress = if (isDragging) previewProgress else progress
-    
+
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 当前时间
             Text(
                 text = formatTime(currentPosition),
                 color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal
             )
 
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp)
-                        .height(40.dp)
-                ) {
-                    val density = LocalDensity.current
-                    val trackWidthPx = with(density) { maxWidth.toPx() }
+            Spacer(modifier = Modifier.width(12.dp))
 
-                    // 点击跳转
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures { offset ->
-                                    val p = (offset.x / trackWidthPx).coerceIn(0f, 1f)
-                                    onSeekStart()
-                                    onSeek(p)
-                                    onSeekStop()
-                                }
+            // 进度条
+            BoxWithConstraints(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+            ) {
+                val density = LocalDensity.current
+                val trackWidthPx = with(density) { maxWidth.toPx() }
+
+                // 点击和拖动区域
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val p = (offset.x / trackWidthPx).coerceIn(0f, 1f)
+                                onSeekStart()
+                                onSeek(p)
+                                onSeekStop()
                             }
-                            .pointerInput(Unit) {
-                                detectDragGestures(
-                                    onDragStart = { offset ->
-                                        isDragging = true
-                                        showPreview = true
-                                        onSeekStart()
-                                        val calculatedProgress = (offset.x / trackWidthPx).coerceIn(0f, 1f)
-                                        previewProgress = calculatedProgress
-                                        previewPosition = (calculatedProgress * duration).toLong()
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    isDragging = true
+                                    showPreview = true
+                                    onSeekStart()
+                                    val calculatedProgress = (offset.x / trackWidthPx).coerceIn(0f, 1f)
+                                    previewProgress = calculatedProgress
+                                    previewPosition = (calculatedProgress * duration).toLong()
                                     },
                                     onDrag = { change, _ ->
                                         val calculatedProgress = (change.position.x / trackWidthPx).coerceIn(0f, 1f)
@@ -1818,25 +2095,19 @@ private fun BottomBar(
                                 )
                             }
                     ) {
-                        val inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                        val activeTrackColor = MaterialTheme.colorScheme.primary
-                        val glowColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        val activeColor = MaterialTheme.colorScheme.primary // 主题色滑块
+                        val trackBackgroundColor = Color.White.copy(alpha = 0.3f)
                         val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
 
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            val trackHeight = 6.dp.toPx()
+                            val trackHeight = 4.dp.toPx()
                             val centerY = size.height / 2
                             val activeWidth = size.width * displayProgress
                             val bufferedWidth = size.width * bufferedProgress
 
-                            // 绘制未播放部分（带渐变）
+                            // 绘制未播放部分背景
                             drawRoundRect(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = 0.15f),
-                                        Color.White.copy(alpha = 0.25f)
-                                    )
-                                ),
+                                color = trackBackgroundColor,
                                 topLeft = Offset(0f, centerY - trackHeight / 2),
                                 size = Size(size.width, trackHeight),
                                 cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
@@ -1845,50 +2116,36 @@ private fun BottomBar(
                             // 绘制缓冲部分
                             if (bufferedWidth > activeWidth) {
                                 drawRoundRect(
-                                    color = Color.White.copy(alpha = 0.4f),
+                                    color = Color.White.copy(alpha = 0.5f),
                                     topLeft = Offset(activeWidth, centerY - trackHeight / 2),
                                     size = Size(bufferedWidth - activeWidth, trackHeight),
                                     cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
                                 )
                             }
 
-                            // 绘制已播放部分（带渐变）
+                            // 绘制已播放部分（黄色）
                             if (activeWidth > 0) {
                                 drawRoundRect(
-                                    brush = Brush.horizontalGradient(
-                                        colors = listOf(
-                                            activeTrackColor,
-                                            activeTrackColor.copy(alpha = 0.9f)
-                                        )
-                                    ),
+                                    color = activeColor,
                                     topLeft = Offset(0f, centerY - trackHeight / 2),
                                     size = Size(activeWidth, trackHeight),
                                     cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
                                 )
-
-                                // 添加发光效果
-                                drawRoundRect(
-                                    color = glowColor,
-                                    topLeft = Offset(0f, centerY - trackHeight / 2 - 4.dp.toPx()),
-                                    size = Size(activeWidth, trackHeight + 8.dp.toPx()),
-                                    cornerRadius = CornerRadius((trackHeight + 8.dp.toPx()) / 2, (trackHeight + 8.dp.toPx()) / 2),
-                                    alpha = 0.5f
-                                )
                             }
                         }
 
-                        // 滑块圆点（响应式位置）
-                        val thumbSize = 16.dp
+                        // 黄色滑块圆点
+                        val thumbSize = 20.dp
                         val thumbDp = with(density) { (displayProgress * trackWidthPx).toDp() }
                         val thumbScale by animateFloatAsState(
-                            targetValue = if (isDragging) 1.2f else 1f,
+                            targetValue = if (isDragging) 1.15f else 1f,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioMediumBouncy,
                                 stiffness = Spring.StiffnessLow
                             ),
                             label = "thumbScale"
                         )
-                        
+
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
@@ -1897,94 +2154,33 @@ private fun BottomBar(
                                 .graphicsLayer {
                                     scaleX = thumbScale
                                     scaleY = thumbScale
-                                    shadowElevation = 6.dp.toPx()
                                 }
                                 .clip(CircleShape)
-                                .background(Color.White)
-                                .border(
-                                    width = 2.dp,
-                                    color = activeTrackColor,
-                                    shape = CircleShape
-                                )
+                                .background(activeColor)
                         )
-
-                        // 预览效果
-                        if (showPreview) {
-                            val previewDp = with(density) { (previewProgress * trackWidthPx).toDp() }
-                            val previewAlpha by animateFloatAsState(
-                                targetValue = if (showPreview) 1f else 0f,
-                                animationSpec = tween(
-                                    durationMillis = 200,
-                                    easing = FastOutSlowInEasing
-                                ),
-                                label = "previewAlpha"
-                            )
-                            val previewOffset by animateDpAsState(
-                                targetValue = (-32).dp,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ),
-                                label = "previewOffset"
-                            )
-                            
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .offset(x = previewDp - 32.dp)
-                                    .zIndex(1f)
-                                    .graphicsLayer {
-                                        alpha = previewAlpha
-                                    }
-                            ) {
-                                Card(
-                                    modifier = Modifier
-                                        .offset(y = previewOffset)
-                                        .graphicsLayer {
-                                            shadowElevation = 12.dp.toPx()
-                                        },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = Color.Black.copy(alpha = 0.85f)
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(
-                                        width = 1.5.dp,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .background(
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    shape = CircleShape
-                                                )
-                                        )
-                                        Text(
-                                            text = formatTime(previewPosition),
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // 总时长
                 Text(
                     text = formatTime(duration),
                     color = Color.White,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Normal
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // 全屏按钮
+                Icon(
+                    imageVector = Icons.Default.Fullscreen,
+                    contentDescription = "全屏",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable { onFullscreen() }
                 )
             }
         }
