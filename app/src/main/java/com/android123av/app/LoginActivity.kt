@@ -28,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.core.view.WindowCompat
 import com.android123av.app.ui.theme.MyApplicationTheme
 import com.android123av.app.components.ForgotPasswordBottomSheet
 import com.android123av.app.state.ThemeStateManager

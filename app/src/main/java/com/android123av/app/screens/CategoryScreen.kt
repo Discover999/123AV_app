@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -45,7 +46,6 @@ import com.android123av.app.network.SiteManager
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -135,6 +135,7 @@ fun CategoryScreen(
 
     val seriesListState = rememberLazyGridState()
     val genericListState = rememberLazyGridState()
+    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
     var isTopBarExpanded by remember { mutableStateOf(true) }
@@ -774,6 +775,7 @@ fun CategoryScreen(
                                             onLoadNext = { if (hasNextPage) currentPage++ },
                                             onLoadPrevious = { if (hasPrevPage) currentPage-- },
                                             onPageSelected = { page -> currentPage = page },
+                                            listState = listState,
                                             bottomPadding = 16.dp
                                         )
                                     }
@@ -791,6 +793,7 @@ fun CategoryScreen(
                                             onLoadNext = { if (hasNextPage) currentPage++ },
                                             onLoadPrevious = { if (hasPrevPage) currentPage-- },
                                             onPageSelected = { page -> currentPage = page },
+                                            gridState = genericListState,
                                             bottomPadding = 16.dp
                                         )
                                     }

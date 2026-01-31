@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.core.view.WindowCompat
 import coil.ImageLoader
 import com.android123av.app.components.AppNavigationBar
 import com.android123av.app.screens.*

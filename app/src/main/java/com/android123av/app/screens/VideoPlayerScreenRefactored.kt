@@ -39,6 +39,7 @@ fun VideoPlayerScreen(
     )
 ) {
     val context = LocalContext.current
+    @Suppress("DEPRECATION")
     val lifecycleOwner = LocalLifecycleOwner.current
     val activity = context as? androidx.activity.ComponentActivity
     val window = activity?.window
@@ -222,6 +223,7 @@ private fun PortraitPlayerView(
 }
 
 private fun setSystemUIVisibility(window: android.view.Window?, isFullscreen: Boolean) {
+    @Suppress("DEPRECATION")
     window?.let { win ->
         if (isFullscreen) {
             win.decorView.systemUiVisibility = (

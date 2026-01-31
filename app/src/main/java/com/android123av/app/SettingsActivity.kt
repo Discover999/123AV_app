@@ -7,7 +7,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.core.view.WindowCompat
 import com.android123av.app.screens.SettingsScreen
 import com.android123av.app.state.DownloadPathManager
 import com.android123av.app.state.ThemeStateManager

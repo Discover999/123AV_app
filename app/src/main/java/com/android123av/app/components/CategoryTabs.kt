@@ -2,7 +2,7 @@ package com.android123av.app.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -37,7 +38,8 @@ private object CategoryTabsDefaults {
 @Composable
 fun CategoryTabs(
     modifier: Modifier = Modifier,
-    onCategoryChange: (String) -> Unit
+    onCategoryChange: (String) -> Unit,
+    onDoubleTapToTop: () -> Unit = {}
 ) {
     val categories = remember {
         listOf(
@@ -66,7 +68,8 @@ fun CategoryTabs(
                 onClick = {
                     selectedTabIndex = index
                     onCategoryChange(category.name)
-                }
+                },
+                onDoubleTapToTop = onDoubleTapToTop
             )
         }
     }
@@ -76,7 +79,8 @@ fun CategoryTabs(
 private fun CategoryChip(
     category: CategoryInfo,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDoubleTapToTop: () -> Unit = {}
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) {
@@ -98,10 +102,24 @@ private fun CategoryChip(
 
     val chipShape = RoundedCornerShape(CategoryTabsDefaults.ChipCornerRadius)
 
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    val doubleTapThreshold = 300L
+
     Surface(
         modifier = Modifier
             .clip(chipShape)
-            .clickable(onClick = onClick),
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = {
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastTapTime < doubleTapThreshold) {
+                            onDoubleTapToTop()
+                        }
+                        lastTapTime = currentTime
+                        onClick()
+                    }
+                )
+            },
         shape = chipShape,
         color = backgroundColor
     ) {

@@ -73,6 +73,7 @@ data class Video(
     val favouriteCount: Int = 0,
     val parts: List<VideoPart> = emptyList()
 ) : Parcelable {
+    @Suppress("DEPRECATION")
     constructor(parcel: Parcel) : this(
         parcel.readString() ?: "",
         parcel.readString() ?: "",

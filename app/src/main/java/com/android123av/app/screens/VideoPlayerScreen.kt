@@ -2,7 +2,6 @@ package com.android123av.app.screens
 
 import android.content.Intent
 import android.util.Log
-import android.view.View
 import android.view.WindowInsets
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -14,7 +13,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,10 +20,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -33,13 +30,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.android123av.app.state.rememberUserState
+import com.android123av.app.utils.HapticUtils
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -71,8 +67,8 @@ import androidx.compose.foundation.layout.FlowRow
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
@@ -100,6 +96,46 @@ val playbackSpeeds = listOf(
     PlaybackSpeed(2.0f, "2.0x")
 )
 
+private val AlphaHigh = 0.9f
+private val AlphaMediumHigh = 0.8f
+private val AlphaMedium = 0.7f
+private val AlphaMediumLow = 0.6f
+private val AlphaLow = 0.5f
+private val AlphaVeryLow = 0.3f
+
+private val ControlsAnimationSpec: FiniteAnimationSpec<Float> = tween(
+    durationMillis = 300,
+    easing = FastOutSlowInEasing
+)
+
+private val PlaybackErrorMessages = mapOf(
+    PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW to "直播已结束，请刷新重试",
+    PlaybackException.ERROR_CODE_TIMEOUT to "网络连接超时，请检查网络",
+    PlaybackException.ERROR_CODE_IO_UNSPECIFIED to "网络错误，请检查网络连接",
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED to "网络连接失败",
+    PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE to "视频格式不支持",
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED to "解码器初始化失败",
+    PlaybackException.ERROR_CODE_DECODING_FAILED to "视频解码失败"
+)
+
+private const val PLAYBACK_ERROR_UNKNOWN = "未知错误"
+private const val TAG = "VideoPlayer"
+private const val BUFFERING_HIDE_DELAY_MS = 8000L
+private const val DEFAULT_HIDE_DELAY_MS = 5000L
+private const val HIDE_DELAY_THRESHOLD_MS = 500L
+private const val ENABLE_DEBUG_LOG = true
+
+private fun debugLog(message: String) {
+    if (ENABLE_DEBUG_LOG) {
+        Log.d(TAG, message)
+    }
+}
+
+private val OverlayDark = Color.Black.copy(alpha = 0.75f)
+private val OverlayMedium = Color.Black.copy(alpha = 0.6f)
+private val OverlayLight = Color.Black.copy(alpha = 0.35f)
+private val OverlayVeryLight = Color.Black.copy(alpha = 0.3f)
+
 @OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
@@ -110,7 +146,7 @@ fun VideoPlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     val userState = rememberUserState()
     
@@ -121,7 +157,6 @@ fun VideoPlayerScreen(
     var videoUrl by remember { mutableStateOf<String?>(null) }
     var videoDetails by remember { mutableStateOf<VideoDetails?>(null) }
     var cachedTitle by remember { mutableStateOf<String?>(null) }
-    var isLoadingDetails by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var videoParts by remember { mutableStateOf<List<com.android123av.app.models.VideoPart>>(emptyList()) }
     var selectedPartIndex by remember { mutableIntStateOf(0) }
@@ -153,18 +188,9 @@ fun VideoPlayerScreen(
     fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
             if (isFullscreen) {
-                win.decorView.systemUiVisibility = (
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                )
                 win.insetsController?.hide(WindowInsets.Type.statusBars())
                 win.insetsController?.hide(WindowInsets.Type.navigationBars())
             } else {
-                win.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 win.insetsController?.show(WindowInsets.Type.statusBars())
                 win.insetsController?.show(WindowInsets.Type.navigationBars())
             }
@@ -173,24 +199,23 @@ fun VideoPlayerScreen(
 
     val controlsAlpha by animateFloatAsState(
         targetValue = if (showControls && !isLocked) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 300,
-            easing = FastOutSlowInEasing
-        ),
+        animationSpec = ControlsAnimationSpec,
         label = "controlsAlpha"
     )
     
     val controlsScale by animateFloatAsState(
         targetValue = if (showControls && !isLocked) 1f else 0.9f,
-        animationSpec = tween(
-            durationMillis = 300,
-            easing = FastOutSlowInEasing
-        ),
+        animationSpec = ControlsAnimationSpec,
         label = "controlsScale"
     )
 
     val hideControlsJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    val isLockedState = rememberUpdatedState(isLocked)
+    val showSpeedSelectorState = rememberUpdatedState(showSpeedSelector)
+    val isSeekingState = rememberUpdatedState(isSeeking)
+    val exoPlayerState = rememberUpdatedState(exoPlayer)
 
     fun updateInteractionTime() {
         lastInteractionTime = System.currentTimeMillis()
@@ -198,14 +223,15 @@ fun VideoPlayerScreen(
 
     fun scheduleHideControls() {
         hideControlsJob.value?.cancel()
-        if (exoPlayer?.isPlaying == true && !isLocked && !showSpeedSelector && !isSeeking) {
+        if (exoPlayerState.value?.isPlaying == true && !isLockedState.value && !showSpeedSelectorState.value && !isSeekingState.value) {
             hideControlsJob.value = coroutineScope.launch {
-                val hideDelay = when {
-                    playbackState == Player.STATE_BUFFERING -> 8000L
-                    else -> 5000L
+                val hideDelay = if (playbackState == Player.STATE_BUFFERING) {
+                    BUFFERING_HIDE_DELAY_MS
+                } else {
+                    DEFAULT_HIDE_DELAY_MS
                 }
                 delay(hideDelay)
-                if (System.currentTimeMillis() - lastInteractionTime >= hideDelay - 500) {
+                if (System.currentTimeMillis() - lastInteractionTime >= hideDelay - HIDE_DELAY_THRESHOLD_MS) {
                     showControls = false
                 }
             }
@@ -287,18 +313,9 @@ fun VideoPlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val errorMsg = when (error.errorCode) {
-                    PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "直播已结束，请刷新重试"
-                    PlaybackException.ERROR_CODE_TIMEOUT -> "网络连接超时，请检查网络"
-                    PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> "网络错误，请检查网络连接"
-                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "网络连接失败"
-                    PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE -> "视频格式不支持"
-                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "解码器初始化失败"
-                    PlaybackException.ERROR_CODE_DECODING_FAILED -> "视频解码失败"
-                    else -> "播放错误: ${error.message ?: "未知错误"}"
-                }
+                val errorMsg = PlaybackErrorMessages[error.errorCode]
+                    ?: "播放错误: ${error.message ?: PLAYBACK_ERROR_UNKNOWN}"
                 Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
-                // 播放错误时显示控件以便用户操作
                 showControls = true
                 hideControlsJob.value?.cancel()
             }
@@ -319,9 +336,9 @@ fun VideoPlayerScreen(
                             if (cachedDetails != null) {
                                 videoDetails = cachedDetails
                                 cachedTitle = VideoDetailsCacheManager.getCachedTitle(context, localVideoId)
-                                Log.d("VideoPlayer", "✅ 从缓存加载视频详情成功: ${cachedDetails.code}")
+                                Log.d(TAG, "✅ 从缓存加载视频详情成功: ${cachedDetails.code}")
                             } else {
-                                Log.d("VideoPlayer", "⚠️ 未找到视频详情缓存, videoId: $localVideoId")
+                                Log.d(TAG, "⚠️ 未找到视频详情缓存, videoId: $localVideoId")
                             }
                         } catch (e: Exception) {
                             Log.e("VideoPlayer", "❌ 加载缓存视频详情失败: ${e.message}")
@@ -348,12 +365,12 @@ fun VideoPlayerScreen(
                     // 直接使用WebView拦截方式获取m3u8地址（最可靠的方式）
                     val cachedUrl = video.videoUrl
                     if (!cachedUrl.isNullOrBlank()) {
-                        Log.d("VideoPlayer", "✅ 使用缓存视频URL: $cachedUrl")
+                        Log.d(TAG, "✅ 使用缓存视频URL: $cachedUrl")
                         cachedUrl
                     } else {
                         val webViewUrl = fetchM3u8UrlWithWebView(context, video.id)
                         if (!webViewUrl.isNullOrBlank()) {
-                            Log.d("VideoPlayer", "✅ WebView拦截获取到URL: $webViewUrl")
+                            Log.d(TAG, "✅ WebView拦截获取到URL: $webViewUrl")
                             webViewUrl
                         } else {
                             Log.e("VideoPlayer", "❌ 无法获取视频URL")
@@ -363,17 +380,13 @@ fun VideoPlayerScreen(
                 }
                 
                 val detailsDeferred = async {
-                    if (video.details != null) {
-                        video.details
-                    } else {
-                        fetchVideoDetails(video.id)
-                    }
+                    video.details ?: fetchVideoDetails(video.id)
                 }
                 
                 val partsDeferred = async {
                     try {
                         val parts = fetchAllVideoParts(context, video.id)
-                        Log.d("VideoPlayer", "✅ 获取到 ${parts.size} 个视频部分")
+                        Log.d(TAG, "✅ 获取到 ${parts.size} 个视频部分")
                         parts
                     } catch (e: Exception) {
                         Log.e("VideoPlayer", "❌ 获取视频部分失败: ${e.message}")
@@ -390,7 +403,7 @@ fun VideoPlayerScreen(
                     try {
                         val realId = videoDetails?.realId ?: video.id
                         val status = fetchFavouriteStatus(realId)
-                        Log.d("VideoPlayer", "✅ 收藏状态 (ID: $realId): $status")
+                        Log.d(TAG, "✅ 收藏状态 (ID: $realId): $status")
                         status
                     } catch (e: Exception) {
                         Log.e("VideoPlayer", "❌ 获取收藏状态失败: ${e.message}")
@@ -401,11 +414,11 @@ fun VideoPlayerScreen(
                 isFavourite = favouriteStatusDeferred.await()
                 
                 if (videoUrl == null) {
-                    Log.d("VideoPlayer", "⚠️ 主视频URL为空，尝试从视频部分获取")
+                    Log.d(TAG, "⚠️ 主视频URL为空，尝试从视频部分获取")
                     val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
                     if (firstPartWithUrl != null) {
                         videoUrl = firstPartWithUrl.url
-                        Log.d("VideoPlayer", "✅ 从视频部分获取到URL: $videoUrl")
+                        Log.d(TAG, "✅ 从视频部分获取到URL: $videoUrl")
                     } else {
                         errorMessage = "无法获取视频播放地址"
                         Log.e("VideoPlayer", "❌ 视频部分中也没有可用的URL")
@@ -415,7 +428,7 @@ fun VideoPlayerScreen(
                 val existingTask = downloadManager.getTaskByVideoId(video.id)
                 if (existingTask != null) {
                     existingDownloadTask = existingTask
-                    Log.d("VideoPlayer", "✅ 找到现有下载任务: ${existingTask.id}, 进度: ${existingTask.progress}%")
+                    debugLog("✅ 找到现有下载任务: ${existingTask.id}, 进度: ${existingTask.progress}%")
                 }
             } catch (e: Exception) {
                 Log.e("VideoPlayer", "❌ 获取视频失败: ${e.message}")
@@ -429,12 +442,12 @@ fun VideoPlayerScreen(
     
     LaunchedEffect(existingDownloadTask?.id) {
         val taskId = existingDownloadTask?.id ?: return@LaunchedEffect
-        
-        Log.d("VideoPlayer", "🔄 开始观察下载任务: $taskId")
+            
+            debugLog("🔄 开始观察下载任务: $taskId")
         
         downloadManager.observeTaskById(taskId).collect { updatedTask ->
             if (updatedTask != null) {
-                Log.d("VideoPlayer", "📥 下载任务更新: 进度=${updatedTask.progress}%, 速度=${updatedTask.speedDisplay}")
+                debugLog("📥 下载任务更新: 进度=${updatedTask.progress}%, 速度=${updatedTask.speedDisplay}")
                 existingDownloadTask = updatedTask
                 
                 if (updatedTask.status == DownloadStatus.DOWNLOADING) {
@@ -526,19 +539,19 @@ fun VideoPlayerScreen(
                                 videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
                                 if (videoUrl == null) {
                                     val httpUrl = fetchVideoUrl(video.id)
-                                    if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                        videoUrl = httpUrl
+                                    videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
+                                        httpUrl
                                     } else {
-                                        videoUrl = fetchM3u8UrlWithWebView(context, video.id)
+                                        fetchM3u8UrlWithWebView(context, video.id)
                                     }
                                 }
                             }
                             if (videoUrl == null) {
-                                Log.d("VideoPlayer", "⚠️ 重试时主视频URL为空，尝试从视频部分获取")
+                                Log.d(TAG, "⚠️ 重试时主视频URL为空，尝试从视频部分获取")
                                 val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
                                 if (firstPartWithUrl != null) {
                                     videoUrl = firstPartWithUrl.url
-                                    Log.d("VideoPlayer", "✅ 重试时从视频部分获取到URL: $videoUrl")
+                                    Log.d(TAG, "✅ 重试时从视频部分获取到URL: $videoUrl")
                                 } else {
                                     errorMessage = "无法获取视频播放地址"
                                     Log.e("VideoPlayer", "❌ 重试时视频部分中也没有可用的URL")
@@ -561,7 +574,7 @@ fun VideoPlayerScreen(
                 AnimatedContent(
                     targetState = isFullscreen,
                     transitionSpec = {
-                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                        fadeIn(animationSpec = tween(100)) togetherWith fadeOut(animationSpec = tween(100))
                     },
                     label = "fullscreenTransition"
                 ) { fullscreen ->
@@ -607,7 +620,11 @@ fun VideoPlayerScreen(
                                 lastInteractionTime = lastInteractionTime,
                                 isSeeking = isSeeking,
                                 onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
-                                onFullscreen = { isFullscreen = !isFullscreen },
+                                onFullscreen = {
+                                    val willBeFullscreen = !isFullscreen
+                                    setSystemUIVisibility(willBeFullscreen)
+                                    isFullscreen = willBeFullscreen
+                                },
                                 onLock = { isLocked = !isLocked },
                                 onSpeedChange = { index ->
                                     currentSpeedIndex = index
@@ -714,7 +731,11 @@ fun VideoPlayerScreen(
                                         lastInteractionTime = lastInteractionTime,
                                         isSeeking = isSeeking,
                                         onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
-                                        onFullscreen = { isFullscreen = !isFullscreen },
+                                        onFullscreen = {
+                                            val willBeFullscreen = !isFullscreen
+                                            setSystemUIVisibility(willBeFullscreen)
+                                            isFullscreen = willBeFullscreen
+                                        },
                                         onLock = { isLocked = !isLocked },
                                         onSpeedChange = { index ->
                                             currentSpeedIndex = index
@@ -806,7 +827,7 @@ fun VideoPlayerScreen(
                                             onPartSelected = { index ->
                                                 selectedPartIndex = index
                                                 val partUrl = videoParts.getOrNull(index)?.url
-                                                android.util.Log.d("VideoPlayer", "点击部分${index + 1}，播放链接: $partUrl")
+                                                android.util.Log.d(TAG, "点击部分${index + 1}，播放链接: $partUrl")
                                                 if (!partUrl.isNullOrBlank()) {
                                                     coroutineScope.launch {
                                                         isLoading = true
@@ -915,7 +936,11 @@ fun VideoPlayerScreen(
                                         lastInteractionTime = lastInteractionTime,
                                         isSeeking = isSeeking,
                                         onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
-                                        onFullscreen = { isFullscreen = !isFullscreen },
+                                        onFullscreen = {
+                                            val willBeFullscreen = !isFullscreen
+                                            setSystemUIVisibility(willBeFullscreen)
+                                            isFullscreen = willBeFullscreen
+                                        },
                                         onLock = { isLocked = !isLocked },
                                         onSpeedChange = { index ->
                                             currentSpeedIndex = index
@@ -1001,7 +1026,7 @@ fun VideoPlayerScreen(
                                         onPartSelected = { index ->
                                             selectedPartIndex = index
                                             val partUrl = videoParts.getOrNull(index)?.url
-                                            android.util.Log.d("VideoPlayer", "点击部分${index + 1}，播放链接: $partUrl")
+                                            android.util.Log.d(TAG, "点击部分${index + 1}，播放链接: $partUrl")
                                             if (!partUrl.isNullOrBlank()) {
                                                 coroutineScope.launch {
                                                     isLoading = true
@@ -1091,24 +1116,7 @@ private fun VideoInfoDialog(
     videoParts: List<com.android123av.app.models.VideoPart>
 ) {
     val context = LocalContext.current
-    var scrollOffset by remember { mutableStateOf(0) }
-    val textMeasurer = rememberTextMeasurer()
-    val titleTextWidth = with(LocalDensity.current) { textMeasurer.measure(videoTitle).size.width.toDp() }
-    val screenWidth = with(LocalDensity.current) { context.resources.displayMetrics.widthPixels.toDp() }
-    val needsScroll = titleTextWidth > screenWidth - 64.dp
-
-    LaunchedEffect(showDialog) {
-        if (showDialog && needsScroll) {
-            while (showDialog) {
-                delay(100)
-                scrollOffset += 1
-                if (scrollOffset > (titleTextWidth - screenWidth + 64.dp).value.toInt()) {
-                    delay(2000)
-                    scrollOffset = 0
-                }
-            }
-        }
-    }
+    val scrollState = rememberScrollState()
 
     if (showDialog) {
         AlertDialog(
@@ -1117,8 +1125,7 @@ private fun VideoInfoDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (needsScroll) Modifier.height(32.dp) else Modifier)
-                        .horizontalScroll(rememberScrollState(scrollOffset))
+                        .horizontalScroll(scrollState)
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onLongPress = {
@@ -1167,7 +1174,7 @@ private fun VideoInfoDialog(
                         )
                     }
 
-                    if (videoParts.isNotEmpty()) {
+                    if (videoParts.size > 1) {
                         Text(
                             text = "部分视频:",
                             style = MaterialTheme.typography.bodyMedium,
@@ -1184,7 +1191,7 @@ private fun VideoInfoDialog(
                                         text = "部分${index + 1}: ",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMedium)
                                     )
                                     ClickableUrlText(
                                         url = part.url,
@@ -1259,7 +1266,7 @@ private fun LoadingState(title: String) {
             Text(
                 text = "正在加载视频...",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaHigh),
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -1268,14 +1275,14 @@ private fun LoadingState(title: String) {
                     .fillMaxWidth(0.8f)
                     .padding(horizontal = 32.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = AlphaLow)
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMedium),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(16.dp),
@@ -1341,14 +1348,14 @@ private fun VideoErrorState(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = AlphaLow)
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMediumHigh),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(16.dp)
                 )
@@ -1430,11 +1437,11 @@ private fun PlayerControls(
 ) {
     val context = LocalContext.current
 
-    var currentPosition by remember { mutableStateOf(exoPlayer?.currentPosition ?: 0L) }
-    var bufferedPosition by remember { mutableStateOf(exoPlayer?.bufferedPosition ?: 0L) }
-    var duration by remember { mutableStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
+    var currentPosition by remember { mutableLongStateOf(exoPlayer?.currentPosition ?: 0L) }
+    var bufferedPosition by remember { mutableLongStateOf(exoPlayer?.bufferedPosition ?: 0L) }
+    var duration by remember { mutableLongStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
     var isPlaying by remember { mutableStateOf(exoPlayer?.isPlaying ?: false) }
-    var playbackState by remember { mutableStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
+    var playbackState by remember { mutableIntStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
     
     LaunchedEffect(exoPlayer) {
         while (true) {
@@ -1600,7 +1607,7 @@ private fun VideoPlayerOverlay(
                     .wrapContentWidth()
                     .height(36.dp),
                 shape = RoundedCornerShape(18.dp),
-                color = Color.Black.copy(alpha = 0.75f),
+                color = OverlayDark,
                 tonalElevation = 4.dp,
                 shadowElevation = 8.dp
             ) {
@@ -1637,6 +1644,38 @@ private fun VideoPlayerOverlay(
             exit = fadeOut(animationSpec = tween(220)) + scaleOut(targetScale = 0.98f, animationSpec = tween(220))
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                // 顶部渐变层
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = AlphaMedium),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                // 底部渐变层
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    OverlayMedium
+                                )
+                            )
+                        )
+                )
+
                 // 顶栏：标题和分辨率信息，右侧功能按钮
                 TopBar(
                     isFullscreen = isFullscreen,
@@ -1756,49 +1795,81 @@ private fun TopBar(
     onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 4.dp, vertical = 8.dp)
             .background(Color.Transparent),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧：标题和分辨率信息
-        Column(
+        // 左侧：返回按钮和标题（同一行）
+        Row(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = videoTitle,
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (videoWidth > 0 && videoHeight > 0) {
-                Text(
-                    text = "$videoWidth x $videoHeight",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp
+            // 返回按钮
+            IconButton(
+                onClick = {
+                    HapticUtils.vibrateClick(context)
+                    onBack()
+                },
+                modifier = Modifier.size(36.dp),
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = Color.White
                 )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // 标题和分辨率信息
+            if (videoTitle.isNotBlank()) {
+                Column(
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Text(
+                        text = videoTitle,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (videoWidth > 0 && videoHeight > 0) {
+                        Text(
+                            text = "$videoWidth x $videoHeight",
+                            color = Color.White.copy(alpha = AlphaMedium),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
             }
         }
 
         // 右侧：功能按钮
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 投屏按钮
-            Icon(
-                imageVector = Icons.Default.Cast,
-                contentDescription = "投屏",
-                tint = Color.White,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable { onCastClick() }
+            // 倍速按钮
+            SpeedButton(
+                currentSpeedIndex = currentSpeedIndex,
+                showSpeedSelector = showSpeedSelector,
+                onSpeedSelectorToggle = {
+                    HapticUtils.vibrateClick(context)
+                    onSpeedSelectorToggle()
+                },
+                onSpeedChange = { index ->
+                    HapticUtils.vibrateClick(context)
+                    onSpeedChange(index)
+                }
             )
 
             // 信息按钮
@@ -1808,17 +1879,10 @@ private fun TopBar(
                 tint = Color.White,
                 modifier = Modifier
                     .size(24.dp)
-                    .clickable { onInfoClick() }
-            )
-
-            // 收藏按钮
-            Icon(
-                imageVector = if (isFavourite) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = "收藏",
-                tint = Color.White,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable { onFavouriteToggle() }
+                    .clickable {
+                        HapticUtils.vibrateClick(context)
+                        onInfoClick()
+                    }
             )
 
             // 设置按钮
@@ -1828,7 +1892,10 @@ private fun TopBar(
                 tint = Color.White,
                 modifier = Modifier
                     .size(24.dp)
-                    .clickable { onSettingsClick() }
+                    .clickable {
+                        HapticUtils.vibrateClick(context)
+                        onSettingsClick()
+                    }
             )
         }
     }
@@ -1841,13 +1908,24 @@ private fun SpeedButton(
     onSpeedSelectorToggle: () -> Unit,
     onSpeedChange: (Int) -> Unit
 ) {
+    val context = LocalContext.current
+    var isLongPressed by remember { mutableStateOf(false) }
+
     Box {
         Surface(
             shape = CircleShape,
-            color = Color.Black.copy(alpha = 0.35f),
+            color = OverlayLight,
             contentColor = Color.White,
             tonalElevation = 2.dp,
-            onClick = onSpeedSelectorToggle
+            modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onSpeedSelectorToggle() },
+                    onLongPress = {
+                        HapticUtils.vibrateLongPress(context)
+                        isLongPressed = true
+                    }
+                )
+            }
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1870,9 +1948,13 @@ private fun SpeedButton(
 
         DropdownMenu(
             expanded = showSpeedSelector,
-            onDismissRequest = onSpeedSelectorToggle,
+            onDismissRequest = {
+                onSpeedSelectorToggle()
+                isLongPressed = false
+            },
             offset = androidx.compose.ui.unit.DpOffset(x = (-8).dp, y = 4.dp),
-            containerColor = Color.Black.copy(alpha = 0.65f),
+            shape = RoundedCornerShape(12.dp),
+            containerColor = Color.Black.copy(alpha = AlphaHigh)
         ) {
             playbackSpeeds.forEachIndexed { index, speed ->
                 val isSelected = currentSpeedIndex == index
@@ -1888,10 +1970,10 @@ private fun SpeedButton(
                                 color = if (isSelected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    Color.White.copy(alpha = 0.9f)
+                                    Color.White.copy(alpha = AlphaHigh)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
                             if (isSelected) {
                                 Icon(
@@ -1904,13 +1986,16 @@ private fun SpeedButton(
                         }
                     },
                     onClick = {
+                        HapticUtils.vibrateClick(context)
                         onSpeedChange(index)
                         onSpeedSelectorToggle()
                     },
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     colors = MenuDefaults.itemColors(
-                        textColor = Color.White.copy(alpha = 0.9f),
-                        trailingIconColor = Color(0xFFFF6B6B)
+                        textColor = Color.White.copy(alpha = AlphaHigh),
+                        disabledTextColor = Color.White.copy(alpha = AlphaMediumLow),
+                        leadingIconColor = Color.White.copy(alpha = AlphaHigh),
+                        trailingIconColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }
@@ -1939,45 +2024,97 @@ private fun PlayPauseButton(
     isPlaying: Boolean,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
+
     val animatedScale by animateFloatAsState(
-        targetValue = if (isPlaying) 0.95f else 1f,
-        animationSpec = tween(180),
+        targetValue = if (isPlaying) 0.9f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
         label = "playPauseScale"
+    )
+
+    val animatedAlpha by animateFloatAsState(
+        targetValue = if (isPlaying) 0.85f else 1f,
+        animationSpec = tween(150),
+        label = "playPauseAlpha"
+    )
+
+    val animatedCornerRadius by animateDpAsState(
+        targetValue = if (isPlaying) 20.dp else 32.dp,
+        animationSpec = tween(200),
+        label = "playPauseCornerRadius"
+    )
+
+    val pulseScale by rememberInfiniteTransition(label = "pulseTransition").animateFloat(
+        initialValue = 1f,
+        targetValue = if (isPlaying) 1.05f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
     )
 
     Box(
         modifier = Modifier
-            .size(64.dp)
-            .scale(animatedScale)
-            .clickable { onClick() },
+            .size(72.dp)
+            .graphicsLayer {
+                scaleX = animatedScale * pulseScale
+                scaleY = animatedScale * pulseScale
+                this.alpha = animatedAlpha
+            }
+            .clip(RoundedCornerShape(animatedCornerRadius))
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = if (isPlaying) 0.15f else 0.1f),
+                        Color.Transparent
+                    )
+                )
+            )
+            .clickable {
+                HapticUtils.vibrateClick(context)
+                onClick()
+            },
         contentAlignment = Alignment.Center
     ) {
         if (isPlaying) {
-            // 暂停图标 - 双竖线样式
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .width(8.dp)
-                        .height(32.dp)
-                        .background(Color.White)
+                        .width(10.dp)
+                        .height(36.dp)
+                        .background(
+                            Color.White,
+                            RoundedCornerShape(4.dp)
+                        )
                 )
                 Box(
                     modifier = Modifier
-                        .width(8.dp)
-                        .height(32.dp)
-                        .background(Color.White)
+                        .width(10.dp)
+                        .height(36.dp)
+                        .background(
+                            Color.White,
+                            RoundedCornerShape(4.dp)
+                        )
                 )
             }
         } else {
-            // 播放图标 - 三角形
             Icon(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = "播放",
                 tint = Color.White,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier
+                    .size(52.dp)
+                    .graphicsLayer {
+                        scaleX = 1.1f
+                        scaleY = 1.1f
+                    }
             )
         }
     }
@@ -2019,8 +2156,8 @@ private fun BottomBar(
     modifier: Modifier = Modifier
 ) {
     var showPreview by remember { mutableStateOf(false) }
-    var previewPosition by remember { mutableStateOf(0L) }
-    var previewProgress by remember { mutableStateOf(0f) }
+    var previewPosition by remember { mutableLongStateOf(0L) }
+    var previewProgress by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
 
     val displayProgress = if (isDragging) previewProgress else progress
@@ -2096,7 +2233,7 @@ private fun BottomBar(
                             }
                     ) {
                         val activeColor = MaterialTheme.colorScheme.primary // 主题色滑块
-                        val trackBackgroundColor = Color.White.copy(alpha = 0.3f)
+                        val trackBackgroundColor = Color.White.copy(alpha = AlphaVeryLow)
                         val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
 
                         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -2116,7 +2253,7 @@ private fun BottomBar(
                             // 绘制缓冲部分
                             if (bufferedWidth > activeWidth) {
                                 drawRoundRect(
-                                    color = Color.White.copy(alpha = 0.5f),
+                                    color = Color.White.copy(alpha = AlphaLow),
                                     topLeft = Offset(activeWidth, centerY - trackHeight / 2),
                                     size = Size(bufferedWidth - activeWidth, trackHeight),
                                     cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
@@ -2203,7 +2340,7 @@ private fun ProgressBar(
         colors = SliderDefaults.colors(
             thumbColor = MaterialTheme.colorScheme.primary,
             activeTrackColor = MaterialTheme.colorScheme.primary,
-            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+            inactiveTrackColor = Color.White.copy(alpha = AlphaVeryLow)
         )
     )
 }
@@ -2245,7 +2382,7 @@ private fun LockedOverlay(
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(Color.Black.copy(alpha = AlphaLow))
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { onUnlock() })
                     },
@@ -2314,14 +2451,14 @@ private fun IdleIndicator() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.3f)),
+            .background(OverlayVeryLight),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier.size(100.dp),
             shape = CircleShape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = AlphaHigh)
             )
         ) {
             Box(
@@ -2417,6 +2554,8 @@ private fun VideoInfoSection(
                 }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -2472,7 +2611,7 @@ private fun VideoInfoSection(
         if (videoDetails.releaseDate.isNotBlank()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = AlphaLow)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -2497,7 +2636,7 @@ private fun VideoInfoSection(
         if (videoParts.size > 1) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = AlphaLow)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)
@@ -2506,7 +2645,7 @@ private fun VideoInfoSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.PlaylistPlay,
+                            imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.primary
@@ -2605,7 +2744,10 @@ private fun VideoInfoSection(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     FilledTonalButton(
-                        onClick = onFavouriteToggle,
+                        onClick = {
+                            HapticUtils.vibrateClick(context)
+                            onFavouriteToggle()
+                        },
                         enabled = !isTogglingFavourite,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.filledTonalButtonColors(
@@ -2626,17 +2768,17 @@ private fun VideoInfoSection(
                         )
                     }
 
-                    val buttonText = when {
-                        existingDownloadTask?.status == DownloadStatus.COMPLETED -> "已下载"
-                        existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> "下载中 ${existingDownloadTask?.progressDisplay ?: "0.00%"}"
-                        existingDownloadTask?.status == DownloadStatus.PAUSED -> "继续下载"
-                        existingDownloadTask?.status == DownloadStatus.FAILED -> "重试下载"
+                    val buttonText = when (existingDownloadTask?.status) {
+                        DownloadStatus.COMPLETED -> "已下载"
+                        DownloadStatus.DOWNLOADING -> "下载中 ${existingDownloadTask?.progressDisplay ?: "0.00%"}"
+                        DownloadStatus.PAUSED -> "继续下载"
+                        DownloadStatus.FAILED -> "重试下载"
                         else -> "下载"
                     }
 
-                    val buttonIcon = when {
-                        existingDownloadTask?.status == DownloadStatus.COMPLETED -> Icons.Default.DownloadDone
-                        existingDownloadTask?.status == DownloadStatus.DOWNLOADING -> Icons.Default.Download
+                    val buttonIcon = when (existingDownloadTask?.status) {
+                        DownloadStatus.COMPLETED -> Icons.Default.DownloadDone
+                        DownloadStatus.DOWNLOADING -> Icons.Default.Download
                         else -> Icons.Default.Download
                     }
 
@@ -2644,6 +2786,7 @@ private fun VideoInfoSection(
 
                     OutlinedButton(
                         onClick = {
+                            HapticUtils.vibrateClick(context)
                             handleDownload(
                                 video = video,
                                 videoUrl = videoUrl,
@@ -2798,7 +2941,7 @@ private fun DownloadStatusCard(
                         Text(
                             text = statusInfo.statusDescription,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMedium)
                         )
                         if (statusInfo.showSpeed && statusInfo.speedText != null) {
                             Spacer(modifier = Modifier.height(4.dp))
@@ -2809,13 +2952,13 @@ private fun DownloadStatusCard(
                                     imageVector = Icons.Default.Speed,
                                     contentDescription = null,
                                     modifier = Modifier.size(14.dp),
-                                    tint = statusInfo.iconColor.copy(alpha = 0.8f)
+                                    tint = statusInfo.iconColor.copy(alpha = AlphaMediumHigh)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = statusInfo.speedText,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = statusInfo.iconColor.copy(alpha = 0.8f),
+                                    color = statusInfo.iconColor.copy(alpha = AlphaMediumHigh),
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -2831,7 +2974,7 @@ private fun DownloadStatusCard(
                                 modifier = Modifier.fillMaxSize(),
                                 strokeWidth = 4.dp,
                                 color = statusInfo.iconColor,
-                                trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
+                                trackColor = MaterialTheme.colorScheme.surface.copy(alpha = AlphaVeryLow)
                             )
                             Text(
                                 text = String.format("%.1f", preciseProgress),
@@ -2859,7 +3002,7 @@ private fun DownloadStatusCard(
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp)),
                         color = statusInfo.iconColor,
-                        trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
+                        trackColor = MaterialTheme.colorScheme.surface.copy(alpha = AlphaVeryLow)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -2869,7 +3012,7 @@ private fun DownloadStatusCard(
                         Text(
                             text = "${existingDownloadTask?.progressDisplay ?: "0.00%"}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMedium),
                             fontWeight = FontWeight.Medium
                         )
                         Text(
@@ -3122,12 +3265,12 @@ private fun InfoChip(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMediumLow)
         )
         Text(
             text = text,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMediumLow)
         )
     }
 }

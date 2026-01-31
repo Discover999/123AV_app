@@ -585,7 +585,7 @@ fun DynamicColorSettingItem(
 
             if (!enabled) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(
+                HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))

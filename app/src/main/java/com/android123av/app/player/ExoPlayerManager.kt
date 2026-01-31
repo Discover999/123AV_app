@@ -3,6 +3,7 @@ package com.android123av.app.player
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -154,7 +155,5 @@ class ExoPlayerManager(private val context: Context) {
             AspectRatioFrameLayout.RESIZE_MODE_FILL,
             AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         )
-        
-        const val DEFAULT_RESIZE_MODE = AspectRatioFrameLayout.RESIZE_MODE_FIT
     }
 }

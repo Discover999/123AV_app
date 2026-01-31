@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.common.jvm)
     implementation(libs.androidx.compose.remote.creation.core)
+    implementation(libs.androidx.foundation)
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)

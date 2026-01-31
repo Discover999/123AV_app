@@ -727,10 +727,7 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
 
     val jsonBody = gson.toJson(mapOf("username" to username, "email" to email))
-    val requestBody = okhttp3.RequestBody.create(
-        "application/json; charset=utf-8".toMediaTypeOrNull(),
-        jsonBody
-    )
+    val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
 
     val request = Request.Builder()
         .url(editUrl)

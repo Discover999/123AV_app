@@ -7,7 +7,6 @@ import com.android123av.app.models.Actress
 import com.android123av.app.models.Genre
 import com.android123av.app.models.Series
 import com.android123av.app.models.PaginationInfo
-import com.android123av.app.models.SortOption
 import com.android123av.app.models.Studio
 import com.android123av.app.utils.ExceptionHandler
 import org.jsoup.Jsoup

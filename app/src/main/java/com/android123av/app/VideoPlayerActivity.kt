@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.core.view.WindowCompat
 import com.android123av.app.models.Video
 import com.android123av.app.screens.VideoPlayerScreen
 import com.android123av.app.state.ThemeStateManager
@@ -18,6 +17,7 @@ import com.android123av.app.ui.theme.MyApplicationTheme
 import com.android123av.app.utils.ActivityUtils
 
 class VideoPlayerActivity : ComponentActivity() {
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -25,7 +25,11 @@ class VideoPlayerActivity : ComponentActivity() {
         ThemeStateManager.initialize(this)
         ActivityUtils.updateStatusBarColor(this)
         
-        val video = intent.getParcelableExtra<Video>("video")
+        val video = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("video", Video::class.java)
+        } else {
+            intent.getParcelableExtra("video")
+        }
         val localVideoPath = intent.getStringExtra("localVideoPath")
         val videoId = intent.getStringExtra("videoId")
         

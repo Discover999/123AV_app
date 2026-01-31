@@ -9,7 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.*
 import com.android123av.app.screens.CategoryScreen
-import com.android123av.app.models.Video
 import com.android123av.app.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

@@ -18,11 +18,14 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -129,6 +132,17 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     var isFocused by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+
+    fun scrollToTop() {
+        coroutineScope.launch {
+            when (viewMode) {
+                ViewMode.LIST -> listState.animateScrollToItem(0)
+                ViewMode.GRID -> gridState.animateScrollToItem(0)
+            }
+        }
+    }
 
     fun getCategoryUrl(category: String): String {
         return when (category) {
@@ -303,7 +317,8 @@ fun HomeScreen(
                 onCategoryChange = { category ->
                     selectedCategory = category
                     currentPage = 1
-                }
+                },
+                onDoubleTapToTop = { scrollToTop() }
             )
 
             if (selectedCategory == "未审查") {
@@ -359,7 +374,8 @@ fun HomeScreen(
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- },
-                                        onPageSelected = { page -> currentPage = page }
+                                        onPageSelected = { page -> currentPage = page },
+                                        listState = listState
                                     )
                                 }
                                 ViewMode.GRID -> {
@@ -374,7 +390,8 @@ fun HomeScreen(
                                         onVideoClick = onVideoClick,
                                         onLoadNext = { if (hasNextPage) currentPage++ },
                                         onLoadPrevious = { if (hasPrevPage) currentPage-- },
-                                        onPageSelected = { page -> currentPage = page }
+                                        onPageSelected = { page -> currentPage = page },
+                                        gridState = gridState
                                     )
                                 }
                             }
@@ -471,11 +488,13 @@ internal fun VideoListContent(
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit,
     onPageSelected: (Int) -> Unit,
+    listState: androidx.compose.foundation.lazy.LazyListState,
     bottomPadding: Dp = 80.dp
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
+            state = listState,
             contentPadding = PaddingValues(
                 start = 16.dp,
                 top = 16.dp,
@@ -521,12 +540,14 @@ internal fun VideoGridContent(
     onLoadNext: () -> Unit,
     onLoadPrevious: () -> Unit,
     onPageSelected: (Int) -> Unit,
+    gridState: LazyGridState,
     bottomPadding: Dp = 80.dp
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
+            state = gridState,
             contentPadding = PaddingValues(
                 start = 16.dp,
                 top = 16.dp,

@@ -1,7 +1,6 @@
 package com.android123av.app.network
 
 import android.content.Context
-import com.android123av.app.constants.AppConstants
 import com.android123av.app.constants.NetworkConstants
 import okhttp3.Cache
 import okhttp3.ConnectionPool

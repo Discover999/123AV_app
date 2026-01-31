@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
-import androidx.core.view.WindowCompat
 import com.android123av.app.screens.DownloadsScreen
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.ui.theme.MyApplicationTheme
