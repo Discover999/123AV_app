@@ -184,6 +184,7 @@ fun VideoPlayerScreen(
     var isFavourite by remember { mutableStateOf(false) }
     var isTogglingFavourite by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
+    var playerError by remember { mutableStateOf<String?>(null) }
     
     val videoTitle = cachedTitle ?: video?.title ?: ""
     
@@ -320,7 +321,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    fun setupPlayerListener(player: Player) {
+    fun setupPlayerListener(player: Player, onPlayerError: (String) -> Unit) {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 playbackState = state
@@ -362,7 +363,7 @@ fun VideoPlayerScreen(
             override fun onPlayerError(error: PlaybackException) {
                 val errorMsg = PlaybackErrorMessages[error.errorCode]
                     ?: "播放错误: ${error.message ?: PLAYBACK_ERROR_UNKNOWN}"
-                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                onPlayerError(errorMsg)
                 showControls = true
                 hideControlsJob.value?.cancel()
             }
@@ -653,7 +654,9 @@ fun VideoPlayerScreen(
                                             setMediaSource(source)
                                             prepare()
                                             playWhenReady = true
-                                            setupPlayerListener(this)
+                                            setupPlayerListener(this) { error ->
+                                                playerError = error
+                                            }
                                         }
                                         exoPlayer = newPlayer
                                         playerView.player = newPlayer
@@ -661,6 +664,74 @@ fun VideoPlayerScreen(
                                     }
                                 }
                             )
+
+                            if (playerError != null) {
+                                Card(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .size(64.dp),
+                                    shape = CircleShape,
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                                    )
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        IconButton(onClick = {
+                                            playerError = null
+                                            isLoading = true
+                                            videoUrl = null
+                                            coroutineScope.launch {
+                                                try {
+                                                    if (localVideoPath != null) {
+                                                        val file = File(localVideoPath)
+                                                        if (file.exists()) {
+                                                            videoUrl = localVideoPath
+                                                            isLoading = false
+                                                        } else {
+                                                            errorMessage = "视频文件不存在"
+                                                            isLoading = false
+                                                        }
+                                                    } else if (video != null) {
+                                                        videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
+                                                        if (videoUrl == null) {
+                                                            val httpUrl = fetchVideoUrl(video.id)
+                                                            videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
+                                                                httpUrl
+                                                            } else {
+                                                                fetchM3u8UrlWithWebView(context, video.id)
+                                                            }
+                                                        }
+                                                        if (videoUrl == null) {
+                                                            val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
+                                                            if (firstPartWithUrl != null) {
+                                                                videoUrl = firstPartWithUrl.url
+                                                            } else {
+                                                                errorMessage = "无法获取视频播放地址"
+                                                                isLoading = false
+                                                                return@launch
+                                                            }
+                                                        }
+                                                        isLoading = false
+                                                    }
+                                                } catch (e: Exception) {
+                                                    errorMessage = "获取视频失败: ${e.message}"
+                                                    isLoading = false
+                                                }
+                                            }
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = "重新加载",
+                                                modifier = Modifier.size(32.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
 
                             PlayerControls(
                                 exoPlayer = exoPlayer,
@@ -770,7 +841,9 @@ fun VideoPlayerScreen(
                                                     setMediaSource(source)
                                                     prepare()
                                                     playWhenReady = true
-                                                    setupPlayerListener(this)
+                                                    setupPlayerListener(this) { error ->
+                                                        playerError = error
+                                                    }
                                                 }
                                                 exoPlayer = newPlayer
                                                 playerView.player = newPlayer
@@ -778,6 +851,74 @@ fun VideoPlayerScreen(
                                             }
                                         }
                                     )
+
+                                    if (playerError != null) {
+                                        Card(
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .size(64.dp),
+                                            shape = CircleShape,
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                IconButton(onClick = {
+                                                    playerError = null
+                                                    isLoading = true
+                                                    videoUrl = null
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            if (localVideoPath != null) {
+                                                                val file = File(localVideoPath)
+                                                                if (file.exists()) {
+                                                                    videoUrl = localVideoPath
+                                                                    isLoading = false
+                                                                } else {
+                                                                    errorMessage = "视频文件不存在"
+                                                                    isLoading = false
+                                                                }
+                                                            } else if (video != null) {
+                                                                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
+                                                                if (videoUrl == null) {
+                                                                    val httpUrl = fetchVideoUrl(video.id)
+                                                                    videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
+                                                                        httpUrl
+                                                                    } else {
+                                                                        fetchM3u8UrlWithWebView(context, video.id)
+                                                                    }
+                                                                }
+                                                                if (videoUrl == null) {
+                                                                    val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
+                                                                    if (firstPartWithUrl != null) {
+                                                                        videoUrl = firstPartWithUrl.url
+                                                                    } else {
+                                                                        errorMessage = "无法获取视频播放地址"
+                                                                        isLoading = false
+                                                                        return@launch
+                                                                    }
+                                                                }
+                                                                isLoading = false
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            errorMessage = "获取视频失败: ${e.message}"
+                                                            isLoading = false
+                                                        }
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Refresh,
+                                                        contentDescription = "重新加载",
+                                                        modifier = Modifier.size(32.dp),
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
 
                                     PlayerControls(
                                         exoPlayer = exoPlayer,
@@ -981,7 +1122,9 @@ fun VideoPlayerScreen(
                                                     setMediaSource(source)
                                                     prepare()
                                                     playWhenReady = true
-                                                    setupPlayerListener(this)
+                                                    setupPlayerListener(this) { error ->
+                                                        playerError = error
+                                                    }
                                                 }
                                                 exoPlayer = newPlayer
                                                 playerView.player = newPlayer
@@ -989,6 +1132,74 @@ fun VideoPlayerScreen(
                                             }
                                         }
                                     )
+
+                                    if (playerError != null) {
+                                        Card(
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .size(64.dp),
+                                            shape = CircleShape,
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                IconButton(onClick = {
+                                                    playerError = null
+                                                    isLoading = true
+                                                    videoUrl = null
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            if (localVideoPath != null) {
+                                                                val file = File(localVideoPath)
+                                                                if (file.exists()) {
+                                                                    videoUrl = localVideoPath
+                                                                    isLoading = false
+                                                                } else {
+                                                                    errorMessage = "视频文件不存在"
+                                                                    isLoading = false
+                                                                }
+                                                            } else if (video != null) {
+                                                                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
+                                                                if (videoUrl == null) {
+                                                                    val httpUrl = fetchVideoUrl(video.id)
+                                                                    videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
+                                                                        httpUrl
+                                                                    } else {
+                                                                        fetchM3u8UrlWithWebView(context, video.id)
+                                                                    }
+                                                                }
+                                                                if (videoUrl == null) {
+                                                                    val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
+                                                                    if (firstPartWithUrl != null) {
+                                                                        videoUrl = firstPartWithUrl.url
+                                                                    } else {
+                                                                        errorMessage = "无法获取视频播放地址"
+                                                                        isLoading = false
+                                                                        return@launch
+                                                                    }
+                                                                }
+                                                                isLoading = false
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            errorMessage = "获取视频失败: ${e.message}"
+                                                            isLoading = false
+                                                        }
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Refresh,
+                                                        contentDescription = "重新加载",
+                                                        modifier = Modifier.size(32.dp),
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
 
                                     PlayerControls(
                                         exoPlayer = exoPlayer,
