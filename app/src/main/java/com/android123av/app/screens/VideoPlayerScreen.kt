@@ -4,7 +4,6 @@ import android.content.Intent
 import android.util.Log
 import android.view.View
 import android.view.WindowInsets
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -490,14 +489,14 @@ fun VideoPlayerScreen(
     
     LaunchedEffect(existingDownloadTask?.id) {
         val taskId = existingDownloadTask?.id ?: return@LaunchedEffect
-            
-            debugLog("🔄 开始观察下载任务: $taskId")
-        
+
+        debugLog("🔄 开始观察下载任务: $taskId")
+
         downloadManager.observeTaskById(taskId).collect { updatedTask ->
             if (updatedTask != null) {
                 debugLog("📥 下载任务更新: 进度=${updatedTask.progress}%, 速度=${updatedTask.speedDisplay}")
                 existingDownloadTask = updatedTask
-                
+
                 if (updatedTask.status == DownloadStatus.DOWNLOADING) {
                     isDownloading = true
                 } else if (updatedTask.status == DownloadStatus.COMPLETED) {
