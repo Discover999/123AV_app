@@ -2,7 +2,9 @@ package com.android123av.app.screens
 
 import android.content.Intent
 import android.util.Log
+import android.view.View
 import android.view.WindowInsets
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -67,6 +69,7 @@ import androidx.compose.foundation.layout.FlowRow
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.WindowInsetsController
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -188,11 +191,47 @@ fun VideoPlayerScreen(
     fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
             if (isFullscreen) {
-                win.insetsController?.hide(WindowInsets.Type.statusBars())
-                win.insetsController?.hide(WindowInsets.Type.navigationBars())
+                win.setDecorFitsSystemWindows(false)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    win.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                    win.insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                } else {
+                    @Suppress("DEPRECATION")
+                    win.decorView.systemUiVisibility = (
+                        View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+                }
             } else {
-                win.insetsController?.show(WindowInsets.Type.statusBars())
-                win.insetsController?.show(WindowInsets.Type.navigationBars())
+                win.setDecorFitsSystemWindows(true)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    win.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                } else {
+                    @Suppress("DEPRECATION")
+                    win.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                }
+            }
+        }
+    }
+
+    fun hideSystemBars() {
+        window?.let { win ->
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                win.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+            } else {
+                @Suppress("DEPRECATION")
+                win.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                )
             }
         }
     }
@@ -240,16 +279,25 @@ fun VideoPlayerScreen(
 
     fun toggleControls() {
         updateInteractionTime()
-        showControls = !showControls
-        if (showControls) {
+        if (isFullscreen) {
+            hideSystemBars()
+            showControls = true
             scheduleHideControls()
         } else {
-            hideControlsJob.value?.cancel()
+            showControls = !showControls
+            if (showControls) {
+                scheduleHideControls()
+            } else {
+                hideControlsJob.value?.cancel()
+            }
         }
     }
 
     fun showControlsTemporarily() {
         updateInteractionTime()
+        if (isFullscreen) {
+            hideSystemBars()
+        }
         showControls = true
         scheduleHideControls()
     }
@@ -594,18 +642,24 @@ fun VideoPlayerScreen(
                                 },
                                 modifier = Modifier.fillMaxSize(),
                                 update = { playerView ->
-                                    val currentPlayer = exoPlayer ?: ExoPlayer.Builder(context).build().apply {
-                                        val source = createMediaSource(videoUrl!!)
-                                        setMediaSource(source)
-                                        prepare()
-                                        playWhenReady = true
-                                        setupPlayerListener(this)
-                                        exoPlayer = this
+                                    val currentPlayer = exoPlayer
+                                    if (currentPlayer != null) {
+                                        if (playerView.player !== currentPlayer) {
+                                            playerView.player = currentPlayer
+                                        }
+                                        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    } else {
+                                        val newPlayer = ExoPlayer.Builder(context).build().apply {
+                                            val source = createMediaSource(videoUrl!!)
+                                            setMediaSource(source)
+                                            prepare()
+                                            playWhenReady = true
+                                            setupPlayerListener(this)
+                                        }
+                                        exoPlayer = newPlayer
+                                        playerView.player = newPlayer
+                                        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                     }
-                                    if (playerView.player != currentPlayer) {
-                                        playerView.player = currentPlayer
-                                    }
-                                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 }
                             )
 
@@ -705,18 +759,24 @@ fun VideoPlayerScreen(
                                         },
                                         modifier = Modifier.fillMaxSize(),
                                         update = { playerView ->
-                                            val currentPlayer = exoPlayer ?: ExoPlayer.Builder(context).build().apply {
-                                                val source = createMediaSource(videoUrl!!)
-                                                setMediaSource(source)
-                                                prepare()
-                                                playWhenReady = true
-                                                setupPlayerListener(this)
-                                                exoPlayer = this
+                                            val currentPlayer = exoPlayer
+                                            if (currentPlayer != null) {
+                                                if (playerView.player !== currentPlayer) {
+                                                    playerView.player = currentPlayer
+                                                }
+                                                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            } else {
+                                                val newPlayer = ExoPlayer.Builder(context).build().apply {
+                                                    val source = createMediaSource(videoUrl!!)
+                                                    setMediaSource(source)
+                                                    prepare()
+                                                    playWhenReady = true
+                                                    setupPlayerListener(this)
+                                                }
+                                                exoPlayer = newPlayer
+                                                playerView.player = newPlayer
+                                                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                             }
-                                            if (playerView.player != currentPlayer) {
-                                                playerView.player = currentPlayer
-                                            }
-                                            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         }
                                     )
 
@@ -910,18 +970,24 @@ fun VideoPlayerScreen(
                                         },
                                         modifier = Modifier.fillMaxSize(),
                                         update = { playerView ->
-                                            val currentPlayer = exoPlayer ?: ExoPlayer.Builder(context).build().apply {
-                                                val source = createMediaSource(videoUrl!!)
-                                                setMediaSource(source)
-                                                prepare()
-                                                playWhenReady = true
-                                                setupPlayerListener(this)
-                                                exoPlayer = this
+                                            val currentPlayer = exoPlayer
+                                            if (currentPlayer != null) {
+                                                if (playerView.player !== currentPlayer) {
+                                                    playerView.player = currentPlayer
+                                                }
+                                                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            } else {
+                                                val newPlayer = ExoPlayer.Builder(context).build().apply {
+                                                    val source = createMediaSource(videoUrl!!)
+                                                    setMediaSource(source)
+                                                    prepare()
+                                                    playWhenReady = true
+                                                    setupPlayerListener(this)
+                                                }
+                                                exoPlayer = newPlayer
+                                                playerView.player = newPlayer
+                                                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                             }
-                                            if (playerView.player != currentPlayer) {
-                                                playerView.player = currentPlayer
-                                            }
-                                            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         }
                                     )
 
@@ -1437,21 +1503,41 @@ private fun PlayerControls(
 ) {
     val context = LocalContext.current
 
-    var currentPosition by remember { mutableLongStateOf(exoPlayer?.currentPosition ?: 0L) }
-    var bufferedPosition by remember { mutableLongStateOf(exoPlayer?.bufferedPosition ?: 0L) }
-    var duration by remember { mutableLongStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
-    var isPlaying by remember { mutableStateOf(exoPlayer?.isPlaying ?: false) }
-    var playbackState by remember { mutableIntStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
+    var currentPosition by remember(exoPlayer) { mutableLongStateOf(exoPlayer?.currentPosition ?: 0L) }
+    var bufferedPosition by remember(exoPlayer) { mutableLongStateOf(exoPlayer?.bufferedPosition ?: 0L) }
+    var duration by remember(exoPlayer) { mutableLongStateOf(exoPlayer?.duration?.takeIf { it > 0 } ?: 0L) }
+    var isPlaying by remember(exoPlayer) { mutableStateOf(exoPlayer?.isPlaying ?: false) }
+    var playbackState by remember(exoPlayer) { mutableIntStateOf(exoPlayer?.playbackState ?: Player.STATE_IDLE) }
+    var lastBufferedPosition by remember(exoPlayer) { mutableLongStateOf(exoPlayer?.bufferedPosition ?: 0L) }
+    var bufferSpeed by remember { mutableStateOf("0.0") }
     
     LaunchedEffect(exoPlayer) {
         while (true) {
-            kotlinx.coroutines.delay(200)
+            kotlinx.coroutines.delay(1000)
             exoPlayer?.let { player ->
                 currentPosition = player.currentPosition
                 bufferedPosition = player.bufferedPosition
                 duration = player.duration.takeIf { it > 0 } ?: 0L
                 isPlaying = player.isPlaying
                 playbackState = player.playbackState
+
+                val positionDelta = bufferedPosition - lastBufferedPosition
+                lastBufferedPosition = bufferedPosition
+                if (positionDelta > 0 && duration > 0) {
+                    val estimatedBitrate = when {
+                        videoHeight >= 2160 -> 16_000_000L
+                        videoHeight >= 1080 -> 8_000_000L
+                        videoHeight >= 720 -> 5_000_000L
+                        videoHeight >= 480 -> 2_500_000L
+                        videoHeight >= 360 -> 1_000_000L
+                        else -> 500_000L
+                    }
+                    val bytesPerMs = estimatedBitrate / 1000.0 / 8.0
+                    val speedMBPerSecond = (positionDelta * bytesPerMs * 5) / (1024.0 * 1024.0)
+                    bufferSpeed = String.format("%.1f", speedMBPerSecond.coerceAtLeast(0.1))
+                } else {
+                    bufferSpeed = "0.0"
+                }
             }
         }
     }
@@ -1484,6 +1570,7 @@ private fun PlayerControls(
                         isPlaying = isPlaying,
                         controlsAlpha = controlsAlpha,
                         isFullscreen = isFullscreen,
+                        bufferSpeed = bufferSpeed,
                         onBack = onBack,
                         onFullscreen = onFullscreen,
                         onLock = onLock,
@@ -1544,6 +1631,7 @@ private fun VideoPlayerOverlay(
     isPlaying: Boolean,
     controlsAlpha: Float,
     isFullscreen: Boolean,
+    bufferSpeed: String = "0.0",
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
@@ -1691,6 +1779,7 @@ private fun VideoPlayerOverlay(
                     videoTitle = videoTitle,
                     videoWidth = videoWidth,
                     videoHeight = videoHeight,
+                    bufferSpeed = bufferSpeed,
                     isFavourite = isFavourite,
                     onFavouriteToggle = onFavouriteToggle,
                     onCastClick = onCastClick,
@@ -1788,6 +1877,7 @@ private fun TopBar(
     videoTitle: String = "",
     videoWidth: Int = 0,
     videoHeight: Int = 0,
+    bufferSpeed: String = "0.0",
     isFavourite: Boolean = false,
     onFavouriteToggle: () -> Unit = {},
     onCastClick: () -> Unit = {},
@@ -1843,11 +1933,21 @@ private fun TopBar(
                         overflow = TextOverflow.Ellipsis
                     )
                     if (videoWidth > 0 && videoHeight > 0) {
-                        Text(
-                            text = "$videoWidth x $videoHeight",
-                            color = Color.White.copy(alpha = AlphaMedium),
-                            fontSize = 11.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "$videoWidth x $videoHeight",
+                                color = Color.White.copy(alpha = AlphaMedium),
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = "${bufferSpeed} M/s",
+                                color = Color.White.copy(alpha = AlphaMedium),
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 }
             }
@@ -2251,16 +2351,18 @@ private fun BottomBar(
                             )
 
                             // 绘制缓冲部分
-                            if (bufferedWidth > activeWidth) {
+                            if (bufferedWidth > 0) {
+                                val bufferTrackHeight = 2.dp.toPx()
+                                val bufferCenterY = centerY
                                 drawRoundRect(
-                                    color = Color.White.copy(alpha = AlphaLow),
-                                    topLeft = Offset(activeWidth, centerY - trackHeight / 2),
-                                    size = Size(bufferedWidth - activeWidth, trackHeight),
-                                    cornerRadius = CornerRadius(trackHeight / 2, trackHeight / 2)
+                                    color = Color.White.copy(alpha = AlphaMedium),
+                                    topLeft = Offset(0f, bufferCenterY - bufferTrackHeight / 2),
+                                    size = Size(bufferedWidth, bufferTrackHeight),
+                                    cornerRadius = CornerRadius(bufferTrackHeight / 2, bufferTrackHeight / 2)
                                 )
                             }
 
-                            // 绘制已播放部分（黄色）
+                            // 绘制已播放部分（主题色）
                             if (activeWidth > 0) {
                                 drawRoundRect(
                                     color = activeColor,

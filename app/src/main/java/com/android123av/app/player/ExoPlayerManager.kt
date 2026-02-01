@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.android123av.app.models.PlayerState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,10 +64,22 @@ class ExoPlayerManager(private val context: Context) {
     }
     
     fun createPlayer(): ExoPlayer {
-        return ExoPlayer.Builder(context).build().apply {
-            _player = this
-            addListener(listener)
-        }
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                15000,  // minBufferMs
+                50000,  // bufferDurationsMs
+                5000,   // minAfterPlaybackMs
+                2000    // bufferForPlaybackMs
+            )
+            .build()
+
+        return ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
+            .build()
+            .apply {
+                _player = this
+                addListener(listener)
+            }
     }
     
     fun loadVideo(url: String) {
