@@ -211,6 +211,7 @@ fun HomeScreen(
         }
         isLoading = true
         isCategoryChanging = true
+        scrollToTop()
         try {
             val categoryUrl = getCategoryUrl(selectedCategory)
             val (newVideos, paginationInfo) = parseVideosFromHtml(
