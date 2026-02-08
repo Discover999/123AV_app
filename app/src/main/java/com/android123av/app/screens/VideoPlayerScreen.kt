@@ -83,6 +83,7 @@ import com.android123av.app.download.M3U8DownloadManager
 import com.android123av.app.download.VideoDetailsCacheManager
 import com.android123av.app.state.DownloadPathManager
 import com.android123av.app.state.UserStateManager.isLoggedIn
+import com.android123av.app.state.WatchHistoryManager
 import kotlinx.coroutines.async
 
 data class PlaybackSpeed(
@@ -464,7 +465,18 @@ fun VideoPlayerScreen(
                 }
                 
                 isFavourite = favouriteStatusDeferred.await()
-                
+
+                val videoIdValue = video.id
+                WatchHistoryManager.addWatchHistory(
+                    videoId = videoIdValue,
+                    title = video.title,
+                    thumbnailUrl = video.thumbnailUrl ?: "",
+                    videoCode = videoDetails?.code ?: "",
+                    releaseDate = videoDetails?.releaseDate ?: "",
+                    duration = videoDetails?.duration ?: "",
+                    performer = videoDetails?.performer ?: ""
+                )
+
                 if (videoUrl == null) {
                     Log.d(TAG, "⚠️ 主视频URL为空，尝试从视频部分获取")
                     val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }

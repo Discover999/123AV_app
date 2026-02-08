@@ -32,6 +32,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.android123av.app.network.editUserProfile
 import com.android123av.app.state.UserStateManager
+import com.android123av.app.state.WatchHistoryManager
 import kotlinx.coroutines.launch
 
 @Composable
@@ -203,7 +204,8 @@ fun ProfileScreen(
     onNavigateToNetworkTest: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToHelp: () -> Unit = {},
-    onNavigateToDownloads: () -> Unit = {}
+    onNavigateToDownloads: () -> Unit = {},
+    onNavigateToWatchHistory: () -> Unit = {}
 ) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showOptionsDialog by remember { mutableStateOf(false) }
@@ -272,6 +274,13 @@ fun ProfileScreen(
                     }
                 }
                 
+                MenuItem(
+                    icon = Icons.Default.History,
+                    title = "历史观看",
+                    subtitle = "观看记录",
+                    onClick = { onNavigateToWatchHistory() }
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(

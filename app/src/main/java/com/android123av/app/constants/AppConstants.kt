@@ -40,6 +40,10 @@ object AppConstants {
     
     const val KEY_SEARCH_HISTORY = "search_history"
     
+    const val WATCH_HISTORY_PREFS_NAME = "watch_history_prefs"
+    const val KEY_WATCH_HISTORY = "watch_history"
+    const val MAX_WATCH_HISTORY = 50
+    
     const val KEY_SELECTED_SITE_ID = "selected_site_id"
     const val DEFAULT_SITE_ID = "123av_com"
     

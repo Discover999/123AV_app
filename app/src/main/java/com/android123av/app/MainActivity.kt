@@ -18,7 +18,9 @@ import com.android123av.app.screens.*
 import com.android123av.app.state.ThemeStateManager
 import com.android123av.app.state.UserStateManager
 import com.android123av.app.state.rememberUserState
+import com.android123av.app.state.WatchHistoryManager
 import com.android123av.app.network.initializeNetworkService
+import com.android123av.app.WatchHistoryActivity
 import com.android123av.app.state.SearchHistoryManager
 import com.android123av.app.state.rememberAppState
 import com.android123av.app.ui.theme.MyApplicationTheme
@@ -53,6 +55,7 @@ class MainActivity : ComponentActivity() {
         UserStateManager.initialize(this)
         ThemeStateManager.initialize(this)
         SearchHistoryManager.initialize(this)
+        WatchHistoryManager.initialize(this)
 
         enableEdgeToEdge()
         ActivityUtils.updateStatusBarColor(this)
@@ -136,6 +139,10 @@ fun MyApplicationApp() {
                 },
                 onNavigateToDownloads = {
                     val intent = Intent(context, DownloadsActivity::class.java)
+                    context.startActivity(intent)
+                },
+                onNavigateToWatchHistory = {
+                    val intent = Intent(context, WatchHistoryActivity::class.java)
                     context.startActivity(intent)
                 }
             )
