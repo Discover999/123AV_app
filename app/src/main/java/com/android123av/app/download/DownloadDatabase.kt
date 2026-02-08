@@ -72,7 +72,7 @@ interface CachedVideoDetailsDao {
     suspend fun getCacheCount(): Int
 }
 
-@Database(entities = [DownloadTask::class, CachedVideoDetails::class], version = 4, exportSchema = false)
+@Database(entities = [DownloadTask::class, CachedVideoDetails::class], version = 1, exportSchema = false)
 abstract class DownloadDatabase : RoomDatabase() {
     abstract fun downloadTaskDao(): DownloadTaskDao
     abstract fun cachedVideoDetailsDao(): CachedVideoDetailsDao
@@ -81,56 +81,18 @@ abstract class DownloadDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: DownloadDatabase? = null
 
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
-                try {
-                    database.execSQL("ALTER TABLE download_tasks ADD COLUMN downloadSpeed INTEGER DEFAULT 0")
-                } catch (e: Exception) {
-                }
-                try {
-                    database.execSQL("ALTER TABLE download_tasks ADD COLUMN totalBytes INTEGER DEFAULT 0")
-                } catch (e: Exception) {
-                }
-            }
-        }
-
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
-                database.execSQL("""
-                    CREATE TABLE IF NOT EXISTS cached_video_details (
-                        videoId TEXT PRIMARY KEY NOT NULL,
-                        code TEXT NOT NULL,
-                        releaseDate TEXT NOT NULL,
-                        duration TEXT NOT NULL,
-                        performer TEXT NOT NULL,
-                        genres TEXT NOT NULL,
-                        maker TEXT NOT NULL,
-                        tags TEXT NOT NULL,
-                        favouriteCount INTEGER DEFAULT 0,
-                        cachedAt INTEGER DEFAULT 0
-                    )
-                """.trimIndent())
-            }
-        }
-
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
-            }
-        }
-
         fun getInstance(context: Context): DownloadDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    DownloadDatabase::class.java,
-                    "download_database"
-                )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
-                    .fallbackToDestructiveMigration(dropAllTables = true)
-                    .build()
-                INSTANCE = instance
-                instance
+                INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
             }
+        }
+
+        private fun buildDatabase(context: Context): DownloadDatabase {
+            return Room.databaseBuilder(
+                context.applicationContext,
+                DownloadDatabase::class.java,
+                "download_database"
+            ).build()
         }
     }
 }

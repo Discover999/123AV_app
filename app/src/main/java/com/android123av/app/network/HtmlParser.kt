@@ -21,13 +21,21 @@ fun parseVideoDetails(html: String): VideoDetails? {
         
         val duration = doc.selectFirst("span:contains(时长) + span")?.text() ?: ""
         
-        val performer = doc.selectFirst("span:contains(女演员) + span")?.text()?.trim() ?: ""
+        val performerElement = doc.selectFirst("span:contains(女演员) + span")
+        val performer = performerElement?.text()?.trim() ?: ""
+        val performerHref = performerElement?.selectFirst("a")?.attr("href") ?: ""
         
-        val genres = doc.select("span.genre a").map { it.text() }
+        val genreElements = doc.select("span.genre a")
+        val genres = genreElements.map { it.text() }
+        val genreHrefs = genreElements.map { it.attr("href") ?: "" }
         
-        val maker = doc.selectFirst("span:contains(制作人) + span")?.text() ?: ""
+        val makerElement = doc.selectFirst("span:contains(制作人) + span")
+        val maker = makerElement?.text() ?: ""
+        val makerHref = makerElement?.selectFirst("a")?.attr("href") ?: ""
         
-        val tags = doc.select("span:contains(标签) + span a").map { it.text() }
+        val tagElements = doc.select("span:contains(标签) + span a")
+        val tags = tagElements.map { it.text() }
+        val tagHrefs = tagElements.map { it.attr("href") ?: "" }
         
         val favouriteCount = doc.select("span[ref=counter]").firstOrNull()?.text()?.toIntOrNull() ?: 0
         
@@ -41,9 +49,13 @@ fun parseVideoDetails(html: String): VideoDetails? {
             releaseDate = releaseDate,
             duration = duration,
             performer = performer,
-            genres = genres,
+            performerHref = performerHref,
             maker = maker,
+            makerHref = makerHref,
+            genres = genres,
             tags = tags,
+            genreHrefs = genreHrefs,
+            tagHrefs = tagHrefs,
             favouriteCount = favouriteCount,
             realId = realId
         )

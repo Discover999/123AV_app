@@ -57,11 +57,13 @@ object AppConstants {
     const val DEFAULT_HTTP_CACHE_SIZE_MB = 50
     const val DEFAULT_CONNECTION_POOL_SIZE = 10
     
-    const val DEFAULT_TIMEOUT_MS = 8000L
-    const val FAST_TIMEOUT_MS = 5000L
+    const val DEFAULT_TIMEOUT_MS = 15000L
+    const val FAST_TIMEOUT_MS = 12000L
     const val SHORT_TIMEOUT_MS = 3000L
     const val VERY_SHORT_TIMEOUT_MS = 1000L
     const val LONG_TIMEOUT_MS = 30000L
+    const val WEBVIEW_TIMEOUT_MS = 15000L
+    const val HTTP_PARALLEL_TIMEOUT_MS = 12000L
     
     const val HTTP_STATUS_INTERNAL_ERROR = 500
     

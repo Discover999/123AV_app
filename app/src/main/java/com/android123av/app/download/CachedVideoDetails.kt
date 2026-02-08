@@ -19,8 +19,10 @@ data class CachedVideoDetails(
     val duration: String,
     val performer: String,
     val genres: String,
+    val genreHrefs: String = "",
     val maker: String,
     val tags: String,
+    val tagHrefs: String = "",
     val favouriteCount: Int = 0,
     val cachedAt: Long = System.currentTimeMillis()
 ) {
@@ -34,8 +36,10 @@ data class CachedVideoDetails(
                 duration = details.duration,
                 performer = details.performer,
                 genres = details.genres.joinToString(separator = "|||"),
+                genreHrefs = details.genreHrefs.joinToString(separator = "|||"),
                 maker = details.maker,
                 tags = details.tags.joinToString(separator = "|||"),
+                tagHrefs = details.tagHrefs.joinToString(separator = "|||"),
                 favouriteCount = details.favouriteCount,
                 cachedAt = System.currentTimeMillis()
             )
@@ -49,8 +53,10 @@ data class CachedVideoDetails(
             duration = duration,
             performer = performer,
             genres = if (genres.isBlank()) emptyList() else genres.split("|||"),
+            genreHrefs = if (genreHrefs.isBlank()) emptyList() else genreHrefs.split("|||"),
             maker = maker,
             tags = if (tags.isBlank()) emptyList() else tags.split("|||"),
+            tagHrefs = if (tagHrefs.isBlank()) emptyList() else tagHrefs.split("|||"),
             favouriteCount = favouriteCount
         )
     }

@@ -85,8 +85,10 @@ object VideoDetailsCacheManager {
                 duration = details.duration,
                 performer = details.performer,
                 genres = details.genres.joinToString(separator = "|||"),
+                genreHrefs = details.genreHrefs.joinToString(separator = "|||"),
                 maker = details.maker,
                 tags = details.tags.joinToString(separator = "|||"),
+                tagHrefs = details.tagHrefs.joinToString(separator = "|||"),
                 favouriteCount = details.favouriteCount,
                 cachedAt = System.currentTimeMillis()
             )

@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.android123av.app.CategoryActivity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -62,6 +63,7 @@ import com.android123av.app.network.fetchVideoUrlParallel
 import com.android123av.app.network.fetchAllVideoParts
 import com.android123av.app.network.fetchFavouriteStatus
 import com.android123av.app.network.toggleFavourite
+import com.android123av.app.network.improvedFetchVideoUrl
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.FlowRow
@@ -191,6 +193,7 @@ fun VideoPlayerScreen(
     fun setSystemUIVisibility(isFullscreen: Boolean) {
         window?.let { win ->
             if (isFullscreen) {
+                @Suppress("DEPRECATION")
                 win.setDecorFitsSystemWindows(false)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                     win.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -207,6 +210,7 @@ fun VideoPlayerScreen(
                     )
                 }
             } else {
+                @Suppress("DEPRECATION")
                 win.setDecorFitsSystemWindows(true)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                     win.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -581,32 +585,23 @@ fun VideoPlayerScreen(
                     videoUrl = null
                     coroutineScope.launch {
                         try {
-                            if (!video.videoUrl.isNullOrBlank()) {
-                                videoUrl = video.videoUrl
-                            } else {
-                                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                                if (videoUrl == null) {
-                                    val httpUrl = fetchVideoUrl(video.id)
-                                    videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                        httpUrl
-                                    } else {
-                                        fetchM3u8UrlWithWebView(context, video.id)
-                                    }
-                                }
-                            }
+                            videoUrl = improvedFetchVideoUrl(context, video)
                             if (videoUrl == null) {
-                                Log.d(TAG, "⚠️ 重试时主视频URL为空，尝试从视频部分获取")
+                                Log.d(TAG, "⚠️ 使用改进方法获取失败，尝试从视频部分获取")
                                 val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
                                 if (firstPartWithUrl != null) {
                                     videoUrl = firstPartWithUrl.url
-                                    Log.d(TAG, "✅ 重试时从视频部分获取到URL: $videoUrl")
+                                    Log.d(TAG, "✅ 从视频部分获取到URL: $videoUrl")
                                 } else {
                                     errorMessage = "无法获取视频播放地址"
-                                    Log.e("VideoPlayer", "❌ 重试时视频部分中也没有可用的URL")
+                                    Log.e("VideoPlayer", "❌ 视频部分中也没有可用的URL")
                                 }
+                            } else {
+                                Log.d(TAG, "✅ 使用改进方法成功获取URL: $videoUrl")
                             }
                         } catch (e: Exception) {
                             errorMessage = "获取视频失败: ${e.message}"
+                            Log.e("VideoPlayer", "❌ 获取视频异常: ${e.message}")
                         } finally {
                             isLoading = false
                         }
@@ -695,15 +690,7 @@ fun VideoPlayerScreen(
                                                             isLoading = false
                                                         }
                                                     } else if (video != null) {
-                                                        videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                                                        if (videoUrl == null) {
-                                                            val httpUrl = fetchVideoUrl(video.id)
-                                                            videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                                                httpUrl
-                                                            } else {
-                                                                fetchM3u8UrlWithWebView(context, video.id)
-                                                            }
-                                                        }
+                                                        videoUrl = improvedFetchVideoUrl(context, video)
                                                         if (videoUrl == null) {
                                                             val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
                                                             if (firstPartWithUrl != null) {
@@ -882,15 +869,7 @@ fun VideoPlayerScreen(
                                                                     isLoading = false
                                                                 }
                                                             } else if (video != null) {
-                                                                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                                                                if (videoUrl == null) {
-                                                                    val httpUrl = fetchVideoUrl(video.id)
-                                                                    videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                                                        httpUrl
-                                                                    } else {
-                                                                        fetchM3u8UrlWithWebView(context, video.id)
-                                                                    }
-                                                                }
+                                                                videoUrl = improvedFetchVideoUrl(context, video)
                                                                 if (videoUrl == null) {
                                                                     val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
                                                                     if (firstPartWithUrl != null) {
@@ -1163,15 +1142,7 @@ fun VideoPlayerScreen(
                                                                     isLoading = false
                                                                 }
                                                             } else if (video != null) {
-                                                                videoUrl = fetchVideoUrlParallel(context, video.id, timeoutMs = 6000)
-                                                                if (videoUrl == null) {
-                                                                    val httpUrl = fetchVideoUrl(video.id)
-                                                                    videoUrl = if (httpUrl != null && httpUrl.contains(".m3u8")) {
-                                                                        httpUrl
-                                                                    } else {
-                                                                        fetchM3u8UrlWithWebView(context, video.id)
-                                                                    }
-                                                                }
+                                                                videoUrl = improvedFetchVideoUrl(context, video)
                                                                 if (videoUrl == null) {
                                                                     val firstPartWithUrl = videoParts.firstOrNull { !it.url.isNullOrBlank() }
                                                                     if (firstPartWithUrl != null) {
@@ -2893,7 +2864,16 @@ private fun VideoInfoSection(
                         DetailItemContent(
                             icon = Icons.Default.Person,
                             label = "演员",
-                            value = videoDetails.performer
+                            value = videoDetails.performer,
+                            onClick = if (videoDetails.performerHref.isNotBlank()) {
+                                {
+                                    navigateToCategory(
+                                        context = context,
+                                        href = videoDetails.performerHref,
+                                        title = videoDetails.performer
+                                    )
+                                }
+                            } else null
                         )
                     }
                 }
@@ -2904,7 +2884,16 @@ private fun VideoInfoSection(
                     DetailItemContent(
                         icon = Icons.Default.Business,
                         label = "制作",
-                        value = videoDetails.maker.ifBlank { "未知" }
+                        value = videoDetails.maker.ifBlank { "未知" },
+                        onClick = if (videoDetails.makerHref.isNotBlank()) {
+                            {
+                                navigateToCategory(
+                                    context = context,
+                                    href = videoDetails.makerHref,
+                                    title = videoDetails.maker
+                                )
+                            }
+                        } else null
                     )
                 }
                 Column(
@@ -3014,7 +3003,7 @@ private fun VideoInfoSection(
             if (videoDetails.genres.isNotEmpty()) {
                 InfoSection(
                     title = "类型",
-                    items = videoDetails.genres,
+                    items = videoDetails.getGenresWithHrefs(),
                     icon = Icons.Default.Category
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -3023,7 +3012,7 @@ private fun VideoInfoSection(
             if (videoDetails.tags.isNotEmpty()) {
                 InfoSection(
                     title = "标签",
-                    items = videoDetails.tags,
+                    items = videoDetails.getTagsWithHrefs(),
                     icon = Icons.Default.LocalOffer
                 )
             }
@@ -3396,11 +3385,20 @@ private data class DownloadStatusInfo(
 private fun DetailItemContent(
     icon: ImageVector,
     label: String,
-    value: String
+    value: String,
+    onClick: (() -> Unit)? = null
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(horizontal = 4.dp)
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
     ) {
         Icon(
             imageVector = icon,
@@ -3429,8 +3427,9 @@ private fun DetailItemContent(
 @Composable
 private fun InfoSection(
     title: String,
-    items: List<String>,
-    icon: ImageVector
+    items: List<Pair<String, String>>,
+    icon: ImageVector,
+    context: android.content.Context = LocalContext.current
 ) {
     Column {
         Row(
@@ -3455,12 +3454,20 @@ private fun InfoSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items.forEach { item ->
+            items.forEach { (itemText, itemHref) ->
                 SuggestionChip(
-                    onClick = { },
+                    onClick = {
+                        if (itemHref.isNotBlank()) {
+                            navigateToCategory(
+                                context = context,
+                                href = itemHref,
+                                title = itemText
+                            )
+                        }
+                    },
                     label = {
                         Text(
-                            text = item,
+                            text = itemText,
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
@@ -3598,4 +3605,14 @@ private fun formatTime(timeMs: Long): String {
     } else {
         String.format("%02d:%02d", minutes, seconds)
     }
+}
+
+private fun navigateToCategory(context: android.content.Context, href: String, title: String) {
+    if (href.isBlank()) return
+    val intent = android.content.Intent(context, CategoryActivity::class.java).apply {
+        putExtra("categoryTitle", title)
+        putExtra("categoryHref", href)
+        flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+    }
+    context.startActivity(intent)
 }

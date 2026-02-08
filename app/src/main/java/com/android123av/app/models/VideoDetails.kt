@@ -8,9 +8,13 @@ data class VideoDetails(
     val releaseDate: String,
     val duration: String,
     val performer: String,
-    val genres: List<String>,
+    val performerHref: String = "",
     val maker: String,
-    val tags: List<String>,
+    val makerHref: String = "",
+    val genres: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
+    val genreHrefs: List<String> = emptyList(),
+    val tagHrefs: List<String> = emptyList(),
     val favouriteCount: Int = 0,
     val realId: String = ""
 ) : Parcelable {
@@ -19,8 +23,12 @@ data class VideoDetails(
         parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString() ?: "",
-        parcel.createStringArrayList() ?: emptyList(),
         parcel.readString() ?: "",
+        parcel.readString() ?: "",
+        parcel.readString() ?: "",
+        parcel.createStringArrayList() ?: emptyList(),
+        parcel.createStringArrayList() ?: emptyList(),
+        parcel.createStringArrayList() ?: emptyList(),
         parcel.createStringArrayList() ?: emptyList(),
         parcel.readInt(),
         parcel.readString() ?: ""
@@ -31,11 +39,28 @@ data class VideoDetails(
         parcel.writeString(releaseDate)
         parcel.writeString(duration)
         parcel.writeString(performer)
-        parcel.writeStringList(genres)
+        parcel.writeString(performerHref)
         parcel.writeString(maker)
+        parcel.writeString(makerHref)
+        parcel.writeStringList(genres)
         parcel.writeStringList(tags)
+        parcel.writeStringList(genreHrefs)
+        parcel.writeStringList(tagHrefs)
         parcel.writeInt(favouriteCount)
         parcel.writeString(realId)
+    }
+
+    fun getGenresWithHrefs(): List<Pair<String, String>> {
+        return genres.zip(genreHrefs.padEnd(genres.size))
+    }
+
+    fun getTagsWithHrefs(): List<Pair<String, String>> {
+        return tags.zip(tagHrefs.padEnd(tags.size))
+    }
+
+    private fun List<String>.padEnd(size: Int): List<String> {
+        return if (this.size >= size) this
+        else this + List(size - this.size) { "" }
     }
 
     override fun describeContents(): Int {
