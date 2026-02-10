@@ -58,8 +58,6 @@ import com.android123av.app.models.Video
 import com.android123av.app.models.VideoDetails
 import com.android123av.app.network.fetchM3u8UrlWithWebView
 import com.android123av.app.network.fetchVideoDetails
-import com.android123av.app.network.fetchVideoUrl
-import com.android123av.app.network.fetchVideoUrlParallel
 import com.android123av.app.network.fetchAllVideoParts
 import com.android123av.app.network.fetchFavouriteStatus
 import com.android123av.app.network.toggleFavourite
@@ -197,7 +195,8 @@ fun VideoPlayerScreen(
     var isTogglingFavourite by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
-    
+    var showSettingsPanel by remember { mutableStateOf(false) }
+
     val videoTitle = cachedTitle ?: video?.title ?: ""
     
     fun setSystemUIVisibility(isFullscreen: Boolean) {
@@ -812,7 +811,9 @@ fun VideoPlayerScreen(
                                         }
                                     }
                                 },
-                                onInfoClick = { showInfoDialog = true }
+                                onInfoClick = { showInfoDialog = true },
+                                onSettingsClick = { showSettingsPanel = true },
+                                showSettingsPanel = { showSettingsPanel = true }
                             )
                         }
                     } else {
@@ -991,7 +992,9 @@ fun VideoPlayerScreen(
                                                 }
                                             }
                                         },
-                                        onInfoClick = { showInfoDialog = true }
+                                        onInfoClick = { showInfoDialog = true },
+                                        onSettingsClick = { showSettingsPanel = true },
+                                        showSettingsPanel = { showSettingsPanel = true }
                                     )
                                 }
 
@@ -1264,7 +1267,9 @@ fun VideoPlayerScreen(
                                                 }
                                             }
                                         },
-                                        onInfoClick = { showInfoDialog = true }
+                                        onInfoClick = { showInfoDialog = true },
+                                        onSettingsClick = { showSettingsPanel = true },
+                                        showSettingsPanel = { showSettingsPanel = true }
                                     )
                                 }
 
@@ -1370,6 +1375,18 @@ fun VideoPlayerScreen(
         videoHeight = videoHeight,
         videoUrl = videoUrl,
         videoParts = videoParts
+    )
+
+    PlayerSettingsPanel(
+        showPanel = showSettingsPanel,
+        onDismiss = { showSettingsPanel = false },
+        currentSpeedIndex = currentSpeedIndex,
+        onSpeedChange = { index ->
+            currentSpeedIndex = index
+            exoPlayer?.setPlaybackSpeed(playbackSpeeds[index].speed)
+        },
+        resizeMode = resizeMode,
+        onResizeModeChange = { toggleResizeMode() }
     )
 }
 
@@ -1701,7 +1718,9 @@ private fun PlayerControls(
     videoHeight: Int = 0,
     isFavourite: Boolean = false,
     onFavouriteToggle: () -> Unit = {},
-    onInfoClick: () -> Unit = {}
+    onInfoClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    showSettingsPanel: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -1811,7 +1830,8 @@ private fun PlayerControls(
                         onFavouriteToggle = onFavouriteToggle,
                         onCastClick = { /* TODO: 投屏功能 */ },
                         onInfoClick = onInfoClick,
-                        onSettingsClick = { /* TODO: 设置功能 */ }
+                        onSettingsClick = onSettingsClick,
+                        showSettingsPanel = showSettingsPanel
                     )
                 } else {
                     LockedOverlay(onUnlock = onLock)
@@ -1859,7 +1879,8 @@ private fun VideoPlayerOverlay(
     onFavouriteToggle: () -> Unit = {},
     onCastClick: () -> Unit = {},
     onInfoClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
+    showSettingsPanel: () -> Unit = {}
 ) {
     var isLongPressed by remember { mutableStateOf(false) }
 
@@ -3636,4 +3657,173 @@ private fun navigateToCategory(context: android.content.Context, href: String, t
         flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
     }
     context.startActivity(intent)
+}
+
+@Composable
+fun PlayerSettingsPanel(
+    showPanel: Boolean,
+    onDismiss: () -> Unit,
+    currentSpeedIndex: Int,
+    onSpeedChange: (Int) -> Unit,
+    resizeMode: Int,
+    onResizeModeChange: () -> Unit
+) {
+    val animatedVisibility by animateVisibilityAsState(
+        targetState = showPanel,
+        animationSpec = tween(300),
+        label = "panelVisibility"
+    )
+
+    var localSpeedIndex by remember { mutableIntStateOf(currentSpeedIndex) }
+    var localResizeMode by remember { mutableIntStateOf(resizeMode) }
+
+    LaunchedEffect(currentSpeedIndex) {
+        localSpeedIndex = currentSpeedIndex
+    }
+
+    LaunchedEffect(resizeMode) {
+        localResizeMode = resizeMode
+    }
+
+    if (animatedVisibility) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable { onDismiss() }
+        ) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .clickable { },
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                tonalElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "播放设置",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Text(
+                        text = "播放速度",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SingleChoiceRow(
+                        options = playbackSpeeds.map { it.label },
+                        selectedIndex = localSpeedIndex,
+                        onOptionSelected = { index ->
+                            localSpeedIndex = index
+                            onSpeedChange(index)
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Text(
+                        text = "画面比例",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val resizeModes = listOf(
+                            Triple(AspectRatioFrameLayout.RESIZE_MODE_FIT, "适应", "保持原始比例"),
+                            Triple(AspectRatioFrameLayout.RESIZE_MODE_FILL, "填充", "填充屏幕"),
+                            Triple(AspectRatioFrameLayout.RESIZE_MODE_ZOOM, "缩放", "缩放适应屏幕")
+                        )
+                        resizeModes.forEach { (mode, name, desc) ->
+                            FilterChip(
+                                selected = localResizeMode == mode,
+                                onClick = {
+                                    localResizeMode = mode
+                                    onResizeModeChange()
+                                },
+                                label = { Text(name) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("完成")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun animateVisibilityAsState(
+    targetState: Boolean,
+    animationSpec: AnimationSpec<Float>,
+    label: String
+): State<Boolean> {
+    return if (targetState) {
+        mutableStateOf(true)
+    } else {
+        val animatedAlpha by animateFloatAsState(
+            targetValue = if (targetState) 1f else 0f,
+            animationSpec = animationSpec,
+            label = label
+        )
+        mutableStateOf(animatedAlpha > 0f)
+    }
+}
+
+@Composable
+fun SingleChoiceRow(
+    options: List<String>,
+    selectedIndex: Int,
+    onOptionSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEachIndexed { index, option ->
+            FilterChip(
+                selected = selectedIndex == index,
+                onClick = { onOptionSelected(index) },
+                label = { Text(option) }
+            )
+        }
+    }
 }
