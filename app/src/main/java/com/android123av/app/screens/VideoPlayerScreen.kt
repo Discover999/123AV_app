@@ -153,6 +153,15 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
+    // 预取视频播放地址，尽量在用户进入播放页前缩短获取时间
+    LaunchedEffect(video?.id) {
+        try {
+            video?.id?.let { id ->
+                com.android123av.app.network.ImprovedVideoUrlFetcher.prefetchVideoUrl(context, id)
+            }
+        } catch (e: Exception) {
+        }
+    }
     val userState = rememberUserState()
     
     val activity = context as? androidx.activity.ComponentActivity

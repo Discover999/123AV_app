@@ -25,6 +25,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Cache
 import okhttp3.ConnectionPool
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -247,78 +248,73 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
     val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
     val result = CompletableDeferred<String?>()
     
-    withContext(Dispatchers.Main) {
-        var webView: WebView? = null
-        var timeoutHandler: Handler? = null
-        var timeoutRunnable: Runnable? = null
+    // 使用共享的 WebView 避免每次创建/销毁导致的冷启动延迟
+    try {
         val foundResult = AtomicBoolean(false)
-        
-        val cleanup = {
-            try {
-                timeoutHandler?.removeCallbacks(timeoutRunnable!!)
-                webView?.let { wv ->
-                    Handler(Looper.getMainLooper()).post {
-                        wv.stopLoading()
-                        wv.destroy()
-                    }
-                }
-            } catch (e: Exception) {
-            }
-        }
-        
-        try {
+        val timeoutHandlerRef = arrayOf<Handler?>(null)
+        val timeoutRunnableRef = arrayOf<Runnable?>(null)
+
+        ImprovedVideoUrlFetcher.useSharedWebView(context) { currentWebView ->
             if (context is Activity && context.isFinishing) {
-                result.complete(null)
-                return@withContext
+                if (!result.isCompleted) result.complete(null)
+                return@useSharedWebView
             }
-            
-            webView = WebView(context)
-            val currentWebView = webView ?: return@withContext
-            
-            configureWebView(currentWebView)
-            
+
+            // 清理逻辑：停止加载但不销毁共享 WebView
+            val cleanup = {
+                try {
+                    timeoutHandlerRef[0]?.removeCallbacks(timeoutRunnableRef[0]!!)
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            currentWebView.stopLoading()
+                        } catch (e: Exception) {
+                        }
+                    }
+                } catch (e: Exception) {
+                }
+            }
+
             currentWebView.webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val url = request.url.toString()
-                    
+
                     if (foundResult.get() || result.isCompleted) {
                         return super.shouldInterceptRequest(view, request)
                     }
-                    
+
                     val urlLower = url.lowercase()
-                    val isVideoFile = urlLower.endsWith(".m3u8") || 
-                                     urlLower.endsWith(".mp4") || 
+                    val isVideoFile = urlLower.endsWith(".m3u8") ||
+                                     urlLower.endsWith(".mp4") ||
                                      urlLower.endsWith(".mpd") ||
                                      urlLower.contains(".m3u8?") ||
                                      urlLower.contains(".mp4?") ||
                                      urlLower.contains(".mpd?")
-                    
+
                     if (isVideoFile) {
                         if (foundResult.compareAndSet(false, true)) {
-                            result.complete(url)
+                            if (!result.isCompleted) result.complete(url)
                             cleanup()
                         }
                     }
-                    
+
                     return super.shouldInterceptRequest(view, request)
                 }
             }
-            
-            timeoutHandler = Handler(context.mainLooper)
-            timeoutRunnable = Runnable {
+
+            timeoutHandlerRef[0] = Handler(context.mainLooper)
+            timeoutRunnableRef[0] = Runnable {
                 if (!result.isCompleted) {
                     foundResult.set(true)
                     result.complete(null)
                     cleanup()
                 }
             }
-            timeoutHandler.postDelayed(timeoutRunnable, timeoutMs)
-            
+            timeoutRunnableRef[0]?.let { timeoutHandlerRef[0]?.postDelayed(it, timeoutMs) }
+
             currentWebView.loadUrl(videoDetailUrl)
-            
-        } catch (e: Exception) {
-            if (!result.isCompleted) result.complete(null)
         }
+    } catch (e: Exception) {
+        if (!result.isCompleted) result.complete(null)
     }
     
     result.await()
@@ -577,6 +573,68 @@ private fun clickNextPartByIndex(
 
 fun initializeNetworkService(context: Context) {
     NetworkConfig.initialize(context)
+}
+
+/**
+ * 同步 WebView 与 OkHttp 的 cookies（基于当前站点）。
+ * 先把 WebView 的 cookies 写入 PersistentCookieJar，再把 OkHttp 的 cookies 写回 WebView，保证两端会话一致。
+ */
+fun syncCookiesForCurrentSite(context: Context) {
+    try {
+        val baseUrl = SiteManager.getCurrentBaseUrl()
+        val httpUrl = baseUrl.toHttpUrlOrNull() ?: return
+
+        val cookieManager = android.webkit.CookieManager.getInstance()
+
+        // WebView -> OkHttp
+        try {
+            val cookieString = cookieManager.getCookie(baseUrl)
+            if (!cookieString.isNullOrBlank()) {
+                val parts = cookieString.split(";").mapNotNull { it.trim().takeIf { it.isNotEmpty() } }
+                val cookies = parts.mapNotNull { part ->
+                    val nv = part.split("=", limit = 2)
+                    if (nv.size == 2) {
+                        try {
+                            okhttp3.Cookie.Builder()
+                                .name(nv[0])
+                                .value(nv[1])
+                                .domain(httpUrl.host)
+                                .path("/")
+                                .build()
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+                }
+
+                getPersistentCookieJar()?.let { jar ->
+                    try {
+                        jar.saveFromResponse(httpUrl, cookies)
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+        } catch (e: Exception) {
+        }
+
+        // OkHttp -> WebView
+        try {
+            val jar = getPersistentCookieJar()
+            if (jar != null) {
+                val okCookies = jar.loadForRequest(httpUrl)
+                for (cookie in okCookies) {
+                    try {
+                        cookieManager.setCookie(baseUrl, cookie.toString())
+                    } catch (e: Exception) {
+                    }
+                }
+                // flush to persistent storage
+                cookieManager.flush()
+            }
+        } catch (e: Exception) {
+        }
+    } catch (e: Exception) {
+    }
 }
 
 fun getOkHttpClient(): OkHttpClient = NetworkConfig.getOkHttpClient()

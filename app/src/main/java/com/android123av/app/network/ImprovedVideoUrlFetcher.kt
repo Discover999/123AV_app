@@ -422,6 +422,47 @@ object ImprovedVideoUrlFetcher {
         }
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var releaseRunnable: Runnable? = null
+
+    /**
+     * 在指定延迟后释放共享 WebView（默认 60s 无活动后释放）。
+     */
+    fun scheduleReleaseAfter(delayMs: Long = 60_000L) {
+        try {
+            cancelScheduledRelease()
+            val r = Runnable {
+                try {
+                    clearWebView()
+                } catch (_: Exception) {
+                }
+                releaseRunnable = null
+            }
+            releaseRunnable = r
+            mainHandler.postDelayed(r, delayMs)
+        } catch (e: Exception) {
+        }
+    }
+
+    fun cancelScheduledRelease() {
+        try {
+            releaseRunnable?.let { mainHandler.removeCallbacks(it) }
+            releaseRunnable = null
+        } catch (e: Exception) {
+        }
+    }
+
+    /**
+     * 立即释放共享 WebView
+     */
+    fun immediateRelease() {
+        try {
+            cancelScheduledRelease()
+            clearWebView()
+        } catch (e: Exception) {
+        }
+    }
+
     fun getCacheSize(): Int = cachedUrls.size
 
     fun getAttemptCount(videoId: String): Int = fetchAttempts[videoId]?.get() ?: 0
@@ -449,6 +490,38 @@ object ImprovedVideoUrlFetcher {
                 url?.let { cacheUrl(videoId, it) }
             } catch (e: Exception) {
             }
+        }
+    }
+
+    fun warmUpWebView(context: Context) {
+        try {
+            if (webView != null) return
+            // create and configure a hidden WebView on main thread
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    val wv = WebView(context)
+                    configureWebView(wv)
+                    // load a lightweight blank page to initialize
+                    wv.loadUrl("about:blank")
+                    webView = wv
+                } catch (e: Exception) {
+                }
+            }
+        } catch (e: Exception) {
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    suspend fun <T> useSharedWebView(context: Context, block: suspend (WebView) -> T): T = withContext(Dispatchers.Main) {
+        val currentWebView = webView ?: WebView(context).also {
+            webView = it
+            configureWebView(it)
+        }
+
+        try {
+            block(currentWebView)
+        } catch (e: Exception) {
+            throw e
         }
     }
 }
