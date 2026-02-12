@@ -21,6 +21,9 @@
     <!-- 震动权限 -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- 画中画(PiP)权限 (Android 8+) -->
+    <uses-permission android:name="android.permission.PICTURE_IN_PICTURE" />
+
     <application
         android:allowBackup="true"
         android:name=".MainApplication"
@@ -48,7 +51,8 @@
             android:exported="false"
             android:label="视频播放"
             android:theme="@style/Theme.MyApplication"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize" />
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:supportsPictureInPicture="true" />
         <activity
             android:name=".CategoryActivity"
             android:exported="false"

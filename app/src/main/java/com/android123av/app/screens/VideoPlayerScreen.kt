@@ -1,7 +1,6 @@
 package com.android123av.app.screens
 
 import android.content.Intent
-import android.util.Log
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Toast
@@ -21,7 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -68,13 +67,17 @@ import androidx.compose.foundation.layout.FlowRow
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Build
 import android.view.WindowInsetsController
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.core.content.ContextCompat
+import androidx.media3.common.util.Log
 import com.android123av.app.DownloadsActivity
+import com.android123av.app.VideoPlayerActivity
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
@@ -146,6 +149,7 @@ fun VideoPlayerScreen(
     video: Video? = null,
     localVideoPath: String? = null,
     localVideoId: String? = null,
+    isPipMode: Boolean = false,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -175,14 +179,14 @@ fun VideoPlayerScreen(
     var isLoadingParts by remember { mutableStateOf(false) }
 
     var exoPlayer by remember { mutableStateOf<Player?>(null) }
-    var showControls by remember { mutableStateOf(true) }
-    var isFullscreen by remember { mutableStateOf(false) }
-    var isLocked by remember { mutableStateOf(false) }
-    var showSpeedSelector by remember { mutableStateOf(false) }
-    var currentSpeedIndex by remember { mutableIntStateOf(2) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
-    var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var showControls by rememberSaveable { mutableStateOf(true) }
+    var isFullscreen by rememberSaveable { mutableStateOf(false) }
+    var isLocked by rememberSaveable { mutableStateOf(false) }
+    var showSpeedSelector by rememberSaveable { mutableStateOf(false) }
+    var currentSpeedIndex by rememberSaveable { mutableIntStateOf(2) }
+    var isPlaying by rememberSaveable { mutableStateOf(false) }
+    var playbackState by rememberSaveable { mutableIntStateOf(Player.STATE_IDLE) }
+    var resizeMode by rememberSaveable { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var videoWidth by remember { mutableIntStateOf(0) }
     var videoHeight by remember { mutableIntStateOf(0) }
     var isSeeking by remember { mutableStateOf(false) }
@@ -531,8 +535,15 @@ fun VideoPlayerScreen(
         }
     }
 
+    // 全屏时的返回处理 - 退出全屏
     BackHandler(isFullscreen) {
         isFullscreen = false
+    }
+    
+    // 非全屏时的返回处理 - 触发onBack回调
+    BackHandler(!isFullscreen) {
+        Log.d("VideoPlayerScreen", "系统返回键被按下（非全屏状态）")
+        onBack()
     }
     
     LaunchedEffect(isFullscreen) {
@@ -545,6 +556,14 @@ fun VideoPlayerScreen(
     
     LaunchedEffect(isFullscreen) {
         setSystemUIVisibility(isFullscreen)
+    }
+    
+    // PiP模式下隐藏控件
+    LaunchedEffect(isPipMode) {
+        if (isPipMode) {
+            Log.d("VideoPlayerScreen", "进入PiP模式，隐藏控件")
+            showControls = false
+        }
     }
 
     fun toggleResizeMode() {
@@ -566,12 +585,19 @@ fun VideoPlayerScreen(
         }
     }
 
+    var wasPlayingBeforePause by rememberSaveable { mutableStateOf(false) }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> exoPlayer?.pause()
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasPlayingBeforePause = exoPlayer?.isPlaying == true
+                    exoPlayer?.pause()
+                }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (exoPlayer?.isPlaying == true) exoPlayer?.play()
+                    if (wasPlayingBeforePause) {
+                        exoPlayer?.play()
+                    }
                 }
                 else -> {}
             }
@@ -579,6 +605,46 @@ fun VideoPlayerScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
+    DisposableEffect(isPipMode, context) {
+        val callback = object : VideoPlayerActivity.PipControlCallback {
+            override fun onPlayPause() {
+                exoPlayer?.let { player ->
+                    Log.d("VideoPlayerScreen", "PiP回调: 播放/暂停")
+                    if (player.isPlaying) {
+                        player.pause()
+                    } else {
+                        player.play()
+                    }
+                }
+            }
+            
+            override fun onSeekForward() {
+                exoPlayer?.let { player ->
+                    Log.d("VideoPlayerScreen", "PiP回调: 快进10秒")
+                    val newPosition = (player.currentPosition + 10000).coerceAtMost(player.duration)
+                    player.seekTo(newPosition)
+                }
+            }
+            
+            override fun onSeekBackward() {
+                exoPlayer?.let { player ->
+                    Log.d("VideoPlayerScreen", "PiP回调: 快退10秒")
+                    val newPosition = (player.currentPosition - 10000).coerceAtLeast(0)
+                    player.seekTo(newPosition)
+                }
+            }
+        }
+        
+        VideoPlayerActivity.setPipControlCallback(callback)
+        
+        Log.d("VideoPlayerScreen", "已注册PiP控制回调: isPipMode=$isPipMode")
+        
+        onDispose {
+            VideoPlayerActivity.setPipControlCallback(null)
+            Log.d("VideoPlayerScreen", "已注销PiP控制回调")
         }
     }
 
@@ -743,6 +809,7 @@ fun VideoPlayerScreen(
                             PlayerControls(
                                 exoPlayer = exoPlayer,
                                 isFullscreen = isFullscreen,
+                                isPipMode = isPipMode,
                                 isLocked = isLocked,
                                 showSpeedSelector = showSpeedSelector,
                                 currentSpeedIndex = currentSpeedIndex,
@@ -924,6 +991,7 @@ fun VideoPlayerScreen(
                                     PlayerControls(
                                         exoPlayer = exoPlayer,
                                         isFullscreen = isFullscreen,
+                                        isPipMode = isPipMode,
                                         isLocked = isLocked,
                                         showSpeedSelector = showSpeedSelector,
                                         currentSpeedIndex = currentSpeedIndex,
@@ -1199,6 +1267,7 @@ fun VideoPlayerScreen(
                                     PlayerControls(
                                         exoPlayer = exoPlayer,
                                         isFullscreen = isFullscreen,
+                                        isPipMode = isPipMode,
                                         isLocked = isLocked,
                                         showSpeedSelector = showSpeedSelector,
                                         currentSpeedIndex = currentSpeedIndex,
@@ -1692,6 +1761,7 @@ private fun VideoErrorState(
 private fun PlayerControls(
     exoPlayer: Player?,
     isFullscreen: Boolean,
+    isPipMode: Boolean = false,
     isLocked: Boolean,
     showSpeedSelector: Boolean,
     currentSpeedIndex: Int,
@@ -1791,6 +1861,7 @@ private fun PlayerControls(
                         isPlaying = isPlaying,
                         controlsAlpha = controlsAlpha,
                         isFullscreen = isFullscreen,
+                        isPipMode = isPipMode,
                         bufferSpeed = bufferSpeed,
                         onBack = onBack,
                         onFullscreen = onFullscreen,
@@ -1853,6 +1924,7 @@ private fun VideoPlayerOverlay(
     isPlaying: Boolean,
     controlsAlpha: Float,
     isFullscreen: Boolean,
+    isPipMode: Boolean = false,
     bufferSpeed: String = "0.0",
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
@@ -1990,6 +2062,7 @@ private fun VideoPlayerOverlay(
                 // 顶栏：标题和分辨率信息，右侧功能按钮
                 TopBar(
                     isFullscreen = isFullscreen,
+                    isPipMode = isPipMode,
                     onBack = onBack,
                     onFullscreen = onFullscreen,
                     onLock = onLock,
@@ -2008,27 +2081,33 @@ private fun VideoPlayerOverlay(
                     onCastClick = onCastClick,
                     onInfoClick = onInfoClick,
                     onSettingsClick = onSettingsClick,
+                    onPlayPauseClick = onPlayPause,
+                    isPlaying = isPlaying,
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
 
-                // 中央控制：播放/暂停按钮
-                CenterControls(
-                    isPlaying = isPlaying,
-                    onPlayPause = onPlayPause
-                )
+                // 中央控制：播放/暂停按钮（PiP模式下隐藏）
+                if (!isPipMode) {
+                    CenterControls(
+                        isPlaying = isPlaying,
+                        onPlayPause = onPlayPause
+                    )
+                }
 
-                // 底部进度条：时间、进度条、总时长、全屏按钮
-                BottomBar(
-                    currentPosition = currentPosition,
-                    bufferedPosition = bufferedPosition,
-                    duration = duration,
-                    progress = progress,
-                    onSeek = onSeek,
-                    onSeekStart = onSeekStart,
-                    onSeekStop = onSeekStop,
-                    onFullscreen = onFullscreen,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+                // 底部进度条：时间、进度条、总时长、全屏按钮（PiP模式下隐藏）
+                if (!isPipMode) {
+                    BottomBar(
+                        currentPosition = currentPosition,
+                        bufferedPosition = bufferedPosition,
+                        duration = duration,
+                        progress = progress,
+                        onSeek = onSeek,
+                        onSeekStart = onSeekStart,
+                        onSeekStop = onSeekStop,
+                        onFullscreen = onFullscreen,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                }
             }
         }
     }
@@ -2088,6 +2167,7 @@ private fun TapGestureLayer(
 @Composable
 private fun TopBar(
     isFullscreen: Boolean,
+    isPipMode: Boolean = false,
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
@@ -2106,6 +2186,8 @@ private fun TopBar(
     onCastClick: () -> Unit = {},
     onInfoClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onPlayPauseClick: () -> Unit = {},
+    isPlaying: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -2118,32 +2200,52 @@ private fun TopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧：返回按钮和标题（同一行）
+        // 左侧：返回按钮和标题（同一行）或全屏按钮（PiP模式）
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 返回按钮
-            IconButton(
-                onClick = {
-                    HapticUtils.vibrateClick(context)
-                    onBack()
-                },
-                modifier = Modifier.size(36.dp),
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = Color.White
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    modifier = Modifier.size(22.dp)
-                )
+            if (isPipMode) {
+                // PiP模式下显示全屏按钮
+                IconButton(
+                    onClick = {
+                        HapticUtils.vibrateClick(context)
+                        onFullscreen()
+                    },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "全屏",
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            } else {
+                // 返回按钮
+                IconButton(
+                    onClick = {
+                        HapticUtils.vibrateClick(context)
+                        onBack()
+                    },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
-            // 标题和分辨率信息
-            if (videoTitle.isNotBlank()) {
+            // 标题和分辨率信息（非PiP模式下显示）
+            if (!isPipMode && videoTitle.isNotBlank()) {
                 Column(
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
@@ -2181,45 +2283,66 @@ private fun TopBar(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 倍速按钮
-            SpeedButton(
-                currentSpeedIndex = currentSpeedIndex,
-                showSpeedSelector = showSpeedSelector,
-                onSpeedSelectorToggle = {
-                    HapticUtils.vibrateClick(context)
-                    onSpeedSelectorToggle()
-                },
-                onSpeedChange = { index ->
-                    HapticUtils.vibrateClick(context)
-                    onSpeedChange(index)
+            if (isPipMode) {
+                // PiP模式下只显示播放/暂停按钮
+                IconButton(
+                    onClick = {
+                        HapticUtils.vibrateClick(context)
+                        onPlayPauseClick()
+                    },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "暂停" else "播放",
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
-            )
-
-            // 信息按钮
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = "信息",
-                tint = Color.White,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable {
+            } else {
+                // 普通模式下显示所有按钮
+                // 倍速按钮
+                SpeedButton(
+                    currentSpeedIndex = currentSpeedIndex,
+                    showSpeedSelector = showSpeedSelector,
+                    onSpeedSelectorToggle = {
                         HapticUtils.vibrateClick(context)
-                        onInfoClick()
-                    }
-            )
-
-            // 设置按钮
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "设置",
-                tint = Color.White,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable {
+                        onSpeedSelectorToggle()
+                    },
+                    onSpeedChange = { index ->
                         HapticUtils.vibrateClick(context)
-                        onSettingsClick()
+                        onSpeedChange(index)
                     }
-            )
+                )
+
+                // 信息按钮
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "信息",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            HapticUtils.vibrateClick(context)
+                            onInfoClick()
+                        }
+                )
+
+                // 设置按钮
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "设置",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            HapticUtils.vibrateClick(context)
+                            onSettingsClick()
+                        }
+                )
+            }
         }
     }
 }
@@ -3659,6 +3782,7 @@ private fun navigateToCategory(context: android.content.Context, href: String, t
     context.startActivity(intent)
 }
 
+@OptIn(UnstableApi::class)
 @Composable
 fun PlayerSettingsPanel(
     showPanel: Boolean,
@@ -3791,14 +3915,14 @@ private fun animateVisibilityAsState(
     label: String
 ): State<Boolean> {
     return if (targetState) {
-        mutableStateOf(true)
+        remember { mutableStateOf(true) }
     } else {
         val animatedAlpha by animateFloatAsState(
             targetValue = if (targetState) 1f else 0f,
             animationSpec = animationSpec,
             label = label
         )
-        mutableStateOf(animatedAlpha > 0f)
+        remember(animatedAlpha) { mutableStateOf(animatedAlpha > 0f) }
     }
 }
 

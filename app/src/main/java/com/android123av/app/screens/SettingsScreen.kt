@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,9 +33,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.android123av.app.state.DownloadPathManager
 import com.android123av.app.state.ThemeStateManager
+import com.android123av.app.state.PipSettingsManager
 import com.android123av.app.constants.AppConstants
 import kotlinx.coroutines.flow.collectLatest
 import java.io.File
+import androidx.compose.material.icons.filled.MovieFilter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +55,11 @@ fun SettingsScreen(
     var currentPath by remember { mutableStateOf(DownloadPathManager.getCurrentPath(context)) }
     var hasStoragePermission by remember { mutableStateOf(checkStoragePermission(context)) }
     var hasNotificationPermission by remember { mutableStateOf(checkNotificationPermission(context)) }
+    
+    // PiP设置
+    var autoPopOnBack by remember { mutableStateOf(PipSettingsManager.isAutoPopOnBackEnabled()) }
+    var pipAnimationEnabled by remember { mutableStateOf(PipSettingsManager.isPipAnimationEnabled()) }
+    var pipAnimationDuration by remember { mutableIntStateOf(PipSettingsManager.getPipAnimationDuration()) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -181,6 +191,176 @@ fun SettingsScreen(
                 enabled = hasStoragePermission,
                 icon = Icons.Default.Folder
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "播放器",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+
+            // 返回自动小窗播放开关
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MovieFilter,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "返回自动小窗播放",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "返回上级时自动进入画中画(PiP)模式",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Switch(
+                        checked = autoPopOnBack,
+                        onCheckedChange = { enabled ->
+                            autoPopOnBack = enabled
+                            PipSettingsManager.setAutoPopOnBack(enabled)
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 小窗切换动画开关
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Animation,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "小窗切换动画",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "进入/退出小窗时显示流畅动画效果",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Switch(
+                        checked = pipAnimationEnabled,
+                        onCheckedChange = { enabled ->
+                            pipAnimationEnabled = enabled
+                            PipSettingsManager.setPipAnimationEnabled(enabled)
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 动画速度调节
+            if (pipAnimationEnabled) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "动画速度",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "${pipAnimationDuration}ms",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Slider(
+                            value = pipAnimationDuration.toFloat(),
+                            onValueChange = { newValue ->
+                                pipAnimationDuration = newValue.toInt()
+                                PipSettingsManager.setPipAnimationDuration(newValue.toInt())
+                            },
+                            valueRange = 100f..500f,
+                            steps = 8,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "快速(100ms)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "流畅(500ms)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
