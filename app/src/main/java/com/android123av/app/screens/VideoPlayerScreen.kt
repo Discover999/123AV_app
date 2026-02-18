@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.media3.common.util.Log
 import com.android123av.app.DownloadsActivity
 import com.android123av.app.VideoPlayerActivity
+import com.android123av.app.cache.VideoSessionCache
 import com.android123av.app.download.DownloadStatus
 import com.android123av.app.download.DownloadTask
 import com.android123av.app.download.M3U8DownloadManager
@@ -434,10 +435,47 @@ fun VideoPlayerScreen(
         errorMessage = null
         isLoadingParts = true
         
+        val videoIdValue = video.id
+        val cachedInfo = VideoSessionCache.get(videoIdValue)
+        if (cachedInfo != null && !cachedInfo.videoUrl.isNullOrBlank()) {
+            Log.d(TAG, "✅ 使用会话缓存: videoId=$videoIdValue")
+            videoUrl = cachedInfo.videoUrl
+            videoParts = cachedInfo.videoParts
+            videoDetails = cachedInfo.videoDetails
+            isLoadingParts = false
+            
+            val favouriteStatusDeferred = async {
+                try {
+                    val realId = videoDetails?.realId ?: videoIdValue
+                    fetchFavouriteStatus(realId)
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            isFavourite = favouriteStatusDeferred.await()
+            
+            WatchHistoryManager.addWatchHistory(
+                videoId = videoIdValue,
+                title = video.title,
+                thumbnailUrl = video.thumbnailUrl ?: "",
+                videoCode = videoDetails?.code ?: "",
+                releaseDate = videoDetails?.releaseDate ?: "",
+                duration = videoDetails?.duration ?: "",
+                performer = videoDetails?.performer ?: ""
+            )
+            
+            val existingTask = downloadManager.getTaskByVideoId(videoIdValue)
+            if (existingTask != null) {
+                existingDownloadTask = existingTask
+            }
+            
+            isLoading = false
+            return@LaunchedEffect
+        }
+        
         coroutineScope.launch {
             try {
                 val videoUrlDeferred = async {
-                    // 直接使用WebView拦截方式获取m3u8地址（最可靠的方式）
                     val cachedUrl = video.videoUrl
                     if (!cachedUrl.isNullOrBlank()) {
                         Log.d(TAG, "✅ 使用缓存视频URL: $cachedUrl")
@@ -474,6 +512,16 @@ fun VideoPlayerScreen(
                 videoParts = partsDeferred.await()
                 isLoadingParts = false
                 
+                if (!videoUrl.isNullOrBlank() || videoParts.isNotEmpty()) {
+                    VideoSessionCache.put(
+                        videoId = videoIdValue,
+                        videoUrl = videoUrl,
+                        videoParts = videoParts,
+                        videoDetails = videoDetails
+                    )
+                    Log.d(TAG, "✅ 已缓存视频信息: videoId=$videoIdValue")
+                }
+                
                 val favouriteStatusDeferred = async {
                     try {
                         val realId = videoDetails?.realId ?: video.id
@@ -488,7 +536,6 @@ fun VideoPlayerScreen(
                 
                 isFavourite = favouriteStatusDeferred.await()
 
-                val videoIdValue = video.id
                 WatchHistoryManager.addWatchHistory(
                     videoId = videoIdValue,
                     title = video.title,
@@ -505,6 +552,7 @@ fun VideoPlayerScreen(
                     if (firstPartWithUrl != null) {
                         videoUrl = firstPartWithUrl.url
                         Log.d(TAG, "✅ 从视频部分获取到URL: $videoUrl")
+                        VideoSessionCache.put(videoIdValue, videoUrl = videoUrl)
                     } else {
                         errorMessage = "无法获取视频播放地址"
                         Log.e("VideoPlayer", "❌ 视频部分中也没有可用的URL")
@@ -1155,6 +1203,9 @@ fun VideoPlayerScreen(
                                                     coroutineScope.launch {
                                                         isLoading = true
                                                         videoUrl = partUrl
+                                                        video?.id?.let { vid ->
+                                                            VideoSessionCache.put(vid, videoUrl = partUrl)
+                                                        }
                                                         exoPlayer?.let { player ->
                                                             player.stop()
                                                             player.release()
@@ -1425,6 +1476,9 @@ fun VideoPlayerScreen(
                                                 coroutineScope.launch {
                                                     isLoading = true
                                                     videoUrl = partUrl
+                                                    video?.id?.let { vid ->
+                                                        VideoSessionCache.put(vid, videoUrl = partUrl)
+                                                    }
                                                     exoPlayer?.let { player ->
                                                         player.stop()
                                                         player.release()

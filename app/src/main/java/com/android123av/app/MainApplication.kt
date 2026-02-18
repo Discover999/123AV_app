@@ -7,6 +7,8 @@ import com.android123av.app.network.initializeNetworkService
 import com.android123av.app.network.ImprovedVideoUrlFetcher
 import com.android123av.app.network.syncCookiesForCurrentSite
 import com.android123av.app.network.SiteManager
+import com.android123av.app.cache.VideoSessionCache
+import com.android123av.app.network.clearVideoUrlCache
 
 class MainApplication : Application() {
     override fun onCreate() {
@@ -50,6 +52,8 @@ class MainApplication : Application() {
                         ImprovedVideoUrlFetcher.scheduleReleaseAfter()
                     } catch (_: Exception) {
                     }
+                    // 清理过期缓存
+                    VideoSessionCache.cleanExpired()
                 }
             }
 
@@ -63,10 +67,14 @@ class MainApplication : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        // 内存紧张时立即释放 WebView
+        // 内存紧张时立即释放 WebView 并清理缓存
         try {
             ImprovedVideoUrlFetcher.immediateRelease()
         } catch (_: Exception) {
+        }
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            VideoSessionCache.clear()
+            clearVideoUrlCache()
         }
     }
 
@@ -76,5 +84,14 @@ class MainApplication : Application() {
             ImprovedVideoUrlFetcher.immediateRelease()
         } catch (_: Exception) {
         }
+        VideoSessionCache.clear()
+        clearVideoUrlCache()
+    }
+
+    override fun onTerminate() {
+        super.onTerminate()
+        // 应用退出时清除所有会话缓存
+        VideoSessionCache.clear()
+        clearVideoUrlCache()
     }
 }
