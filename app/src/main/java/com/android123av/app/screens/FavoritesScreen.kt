@@ -55,36 +55,29 @@ fun FavoritesScreen(
 
     fun loadFavorites(page: Int = 1) {
         if (!isLoggedIn) {
-            println("DEBUG: loadFavorites skipped - not logged in")
             return
         }
 
         isLoading = true
-        println("DEBUG: loadFavorites started - page=$page, isLoading=$isLoading")
         coroutineScope.launch {
             try {
                 val (videos, pagination) = fetchUserFavorites(page)
-                println("DEBUG: fetchUserFavorites returned - videos.size=${videos.size}, pagination=$pagination")
                 favoriteVideos = videos
                 if (pagination.totalPages > 0) {
                     totalPages = pagination.totalPages
                 }
                 hasNextPage = pagination.hasNextPage
                 hasPrevPage = pagination.hasPrevPage
-                println("DEBUG: FavoritesScreen - Loaded ${videos.size} favorite videos, currentPage=$page, hasNextPage=$hasNextPage, hasPrevPage=$hasPrevPage")
             } catch (e: Exception) {
-                println("DEBUG: FavoritesScreen - Error loading favorites: ${e.message}")
                 favoriteVideos = emptyList()
             } finally {
                 isLoading = false
                 isRefreshing = false
-                println("DEBUG: loadFavorites completed - isLoading=$isLoading")
             }
         }
     }
 
     LaunchedEffect(isLoggedIn, currentPage, refreshTrigger) {
-        println("DEBUG: LaunchedEffect triggered - isLoggedIn=$isLoggedIn, currentPage=$currentPage, refreshTrigger=$refreshTrigger")
         if (isLoggedIn) {
             loadFavorites(currentPage)
         } else {

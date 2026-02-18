@@ -6,9 +6,7 @@ import com.android123av.app.network.login
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-// 用户状态管理类 - 使用共享的UserStateManager
 class UserState {
-    // 使用共享状态管理器的属性
     val isLoggedIn: Boolean get() = UserStateManager.isLoggedIn
     val userId: String get() = UserStateManager.userId
     val userName: String get() = UserStateManager.userName
@@ -16,15 +14,10 @@ class UserState {
     val loginError: String get() = UserStateManager.loginError
     
     init {
-        println("DEBUG: UserState initialized - isLoggedIn: $isLoggedIn, userId: $userId, userName: $userName")
-        // 同步状态
         UserStateManager.setLoginSuccessListener {
-            // 状态变化监听器
-            println("DEBUG: Login success listener triggered")
         }
     }
     
-    // 登录方法
     fun performLogin(
         username: String, 
         password: String, 
@@ -48,29 +41,19 @@ class UserState {
         }
     }
     
-    // 登出方法
     fun performLogout() {
         UserStateManager.onLogout()
     }
     
-    // 获取当前用户信息
     fun getCurrentUser(): User? {
         val userInfo = UserStateManager.getCurrentUserInfo()
-        println("DEBUG: UserState.getCurrentUser() - userInfo: $userInfo")
         return userInfo?.let { (id, name, email) ->
             User(id = id, name = name, email = email)
         }
     }
 }
 
-// 为UserState提供Compose的remember函数
 @Composable
 fun rememberUserState(): UserState {
-    println("DEBUG: rememberUserState called")
-    return remember {
-        println("DEBUG: Creating new UserState instance")
-        UserState()
-    }
+    return remember { UserState() }
 }
-
-
