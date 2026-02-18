@@ -120,10 +120,9 @@ class VideoPlayerActivity : ComponentActivity() {
                         localVideoPath = localVideoPath,
                         localVideoId = videoId,
                         isPipMode = isPipMode,
-                        onBack = {
-                            Log.d("VideoPlayerActivity", "返回按钮被点击了")
-                            // 检查是否启用了自动PiP
-                            if (isPipSupported && PipSettingsManager.isAutoPopOnBackEnabled()) {
+                        onBack = { canEnterPip ->
+                            Log.d("VideoPlayerActivity", "返回按钮被点击了, canEnterPip=$canEnterPip")
+                            if (canEnterPip && isPipSupported && PipSettingsManager.isAutoPopOnBackEnabled()) {
                                 enterPip()
                             } else {
                                 finish()

@@ -8,12 +8,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import com.android123av.app.network.getPersistentCookieJar
 import com.android123av.app.constants.AppConstants
 
 object UserStateManager {
     private const val TAG = "UserStateManager"
+    
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     var isLoggedIn by mutableStateOf(false)
     var userId by mutableStateOf("")
@@ -31,6 +35,10 @@ object UserStateManager {
     fun initialize(context: Context) {
         sharedPreferences = context.getSharedPreferences(AppConstants.USER_PREFS_NAME, Context.MODE_PRIVATE)
         loadUserInfo()
+    }
+    
+    fun release() {
+        scope.cancel()
     }
     
     private fun loadUserInfo() {
@@ -53,7 +61,7 @@ object UserStateManager {
                 userName = savedUserName
                 userEmail = savedUserEmail
                 
-                CoroutineScope(Dispatchers.IO).launch {
+                scope.launch {
                     val isValid = validateLoginStatus()
                     if (!isValid) {
                         onLogout()

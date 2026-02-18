@@ -24,6 +24,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.android123av.app.constants.PlayerConstants
 import com.android123av.app.models.PlayerState
+import com.android123av.app.utils.TimeUtils
 import com.android123av.app.viewmodel.VideoPlayerViewModel
 
 @Composable
@@ -274,7 +275,7 @@ private fun BottomControls(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
+                text = "${TimeUtils.formatTime(currentPosition)} / ${TimeUtils.formatTime(duration)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White
             )
@@ -472,17 +473,5 @@ fun PlaybackCompleteOverlay(
             Spacer(modifier = Modifier.width(8.dp))
             Text("重新播放")
         }
-    }
-}
-
-private fun formatTime(timeMs: Long): String {
-    val seconds = (timeMs / 1000) % 60
-    val minutes = (timeMs / (1000 * 60)) % 60
-    val hours = timeMs / (1000 * 60 * 60)
-    
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%02d:%02d", minutes, seconds)
     }
 }

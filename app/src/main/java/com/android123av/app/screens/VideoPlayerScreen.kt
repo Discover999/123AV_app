@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.android123av.app.state.rememberUserState
 import com.android123av.app.utils.HapticUtils
+import com.android123av.app.utils.TimeUtils
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -150,7 +151,7 @@ fun VideoPlayerScreen(
     localVideoPath: String? = null,
     localVideoId: String? = null,
     isPipMode: Boolean = false,
-    onBack: () -> Unit,
+    onBack: (canEnterPip: Boolean) -> Unit = {},
     onEnterPip: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -552,7 +553,8 @@ fun VideoPlayerScreen(
     // 非全屏时的返回处理 - 触发onBack回调
     BackHandler(!isFullscreen) {
         Log.d("VideoPlayerScreen", "系统返回键被按下（非全屏状态）")
-        onBack()
+        val canEnterPip = !isLoading && videoUrl != null && exoPlayer != null
+        onBack(canEnterPip)
     }
     
     LaunchedEffect(isFullscreen) {
@@ -702,7 +704,7 @@ fun VideoPlayerScreen(
         isLoading -> LoadingState(video?.title ?: "加载中...")
         errorMessage != null -> VideoErrorState(
             message = errorMessage!!,
-            onBack = { onBack() },
+            onBack = { onBack(false) },
             onRetry = {
                 if (localVideoPath != null) {
                     errorMessage = null
@@ -867,7 +869,7 @@ fun VideoPlayerScreen(
                                 showControls = showControls,
                                 lastInteractionTime = lastInteractionTime,
                                 isSeeking = isSeeking,
-                                onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                onBack = if (isFullscreen) {{ isFullscreen = false }} else ({ onBack(true) }),
                                 onFullscreen = {
                                     val willBeFullscreen = !isFullscreen
                                     setSystemUIVisibility(willBeFullscreen)
@@ -1049,7 +1051,7 @@ fun VideoPlayerScreen(
                                         showControls = showControls,
                                         lastInteractionTime = lastInteractionTime,
                                         isSeeking = isSeeking,
-                                        onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                        onBack = if (isFullscreen) {{ isFullscreen = false }} else ({ onBack(true) }),
                                         onFullscreen = {
                                             val willBeFullscreen = !isFullscreen
                                             setSystemUIVisibility(willBeFullscreen)
@@ -1325,7 +1327,7 @@ fun VideoPlayerScreen(
                                         showControls = showControls,
                                         lastInteractionTime = lastInteractionTime,
                                         isSeeking = isSeeking,
-                                        onBack = if (isFullscreen) {{ isFullscreen = false }} else onBack,
+                                        onBack = if (isFullscreen) {{ isFullscreen = false }} else ({ onBack(true) }),
                                         onFullscreen = {
                                             val willBeFullscreen = !isFullscreen
                                             setSystemUIVisibility(willBeFullscreen)
@@ -1819,7 +1821,7 @@ private fun PlayerControls(
     showControls: Boolean,
     lastInteractionTime: Long,
     isSeeking: Boolean,
-    onBack: () -> Unit,
+    onBack: (Boolean) -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onSpeedChange: (Int) -> Unit,
@@ -1914,7 +1916,7 @@ private fun PlayerControls(
                         isFullscreen = isFullscreen,
                         isPipMode = isPipModeState.value,
                         bufferSpeed = bufferSpeed,
-                        onBack = onBack,
+                        onBack = { onBack(true) },
                         onFullscreen = onFullscreen,
                         onLock = onLock,
                         onSpeedChange = onSpeedChange,
@@ -1977,7 +1979,7 @@ private fun VideoPlayerOverlay(
     isFullscreen: Boolean,
     isPipMode: Boolean = false,
     bufferSpeed: String = "0.0",
-    onBack: () -> Unit,
+    onBack: (Boolean) -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onSpeedChange: (Int) -> Unit,
@@ -2113,7 +2115,7 @@ private fun VideoPlayerOverlay(
                 // 顶栏：标题和分辨率信息，右侧功能按钮
                 TopBar(
                     isFullscreen = isFullscreen,
-                    onBack = onBack,
+                    onBack = { onBack(true) },
                     onFullscreen = onFullscreen,
                     onLock = onLock,
                     onResizeModeChange = onResizeModeChange,
@@ -2219,7 +2221,7 @@ private fun TapGestureLayer(
 @Composable
 private fun TopBar(
     isFullscreen: Boolean,
-    onBack: () -> Unit,
+    onBack: (Boolean) -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onResizeModeChange: () -> Unit,
@@ -2261,7 +2263,7 @@ private fun TopBar(
             IconButton(
                 onClick = {
                     HapticUtils.vibrateClick(context)
-                    onBack()
+                    onBack(true)
                 },
                 modifier = Modifier.size(36.dp),
                 colors = IconButtonDefaults.iconButtonColors(
@@ -2625,7 +2627,7 @@ private fun BottomBar(
         ) {
             // 当前时间
             Text(
-                text = formatTime(currentPosition),
+                text = TimeUtils.formatTime(currentPosition),
                 color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Normal
@@ -2755,7 +2757,7 @@ private fun BottomBar(
 
                 // 总时长
                 Text(
-                    text = formatTime(duration),
+                    text = TimeUtils.formatTime(duration),
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Normal
@@ -3761,19 +3763,6 @@ private fun InfoChip(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = AlphaMediumLow)
         )
-    }
-}
-
-private fun formatTime(timeMs: Long): String {
-    val totalSeconds = timeMs / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%02d:%02d", minutes, seconds)
     }
 }
 

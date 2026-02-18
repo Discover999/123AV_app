@@ -1,5 +1,7 @@
 package com.android123av.app.screens
 
+import android.util.Log
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
@@ -91,6 +93,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+
+private const val TAG = "HomeScreen"
 
 enum class SortOption(val displayName: String, val param: String) {
     RELEASE_DATE("发布日期", "release_date"),
@@ -188,7 +192,7 @@ fun HomeScreen(
                 searchResults = emptyList()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "搜索失败: ${e.message}")
             withContext(Dispatchers.Main) {
                 searchError = "搜索失败，请稍后重试"
                 isSearching = false
@@ -227,7 +231,7 @@ fun HomeScreen(
             hasPrevPage = paginationInfo.hasPrevPage
             totalPages = paginationInfo.totalPages
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "加载视频失败: ${e.message}")
             videos = emptyList()
         } finally {
             isLoading = false

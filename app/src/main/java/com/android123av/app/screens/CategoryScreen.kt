@@ -1,5 +1,7 @@
 package com.android123av.app.screens
 
+import android.util.Log
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
@@ -54,6 +56,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.android123av.app.models.PaginationInfo
 import kotlinx.coroutines.launch
 import java.io.IOException
+
+private const val TAG = "CategoryScreen"
 
 private enum class CategoryContentState {
     LOADING,
@@ -293,7 +297,7 @@ fun CategoryScreen(
                 videos = emptyList()
                 actresses = emptyList()
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "加载失败: ${e.message}")
                 error = "加载失败，请稍后重试"
                 videos = emptyList()
                 actresses = emptyList()
