@@ -73,6 +73,9 @@ object AppConstants {
     
     const val THUMBNAIL_RANDOM_MIN = 200
     const val THUMBNAIL_RANDOM_MAX = 300
+    
+    const val PIP_ANIMATION_ENABLED = true
+    const val PIP_ANIMATION_DURATION_MS = 300
 }
 
 object NetworkConstants {

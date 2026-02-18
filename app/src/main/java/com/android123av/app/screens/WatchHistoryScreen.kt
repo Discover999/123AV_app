@@ -2,11 +2,10 @@ package com.android123av.app.screens
 
 import android.content.Intent
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,16 +20,20 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -118,31 +121,25 @@ fun WatchHistoryScreen(
                         items = watchHistoryList,
                         key = { item: WatchHistoryItem -> item.videoId }
                     ) { historyItem ->
-                        AnimatedVisibility(
-                            visible = true,
-                            enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
-                        ) {
-                            WatchHistoryItemCard(
-                                historyItem = historyItem,
-                                onClick = {
-                                    val intent = Intent(context, VideoPlayerActivity::class.java)
-                                    val video = Video(
-                                        id = historyItem.videoId,
-                                        title = historyItem.title,
-                                        duration = "",
-                                        thumbnailUrl = historyItem.thumbnailUrl,
-                                        videoUrl = null,
-                                        details = null
-                                    )
-                                    intent.putExtra("video", video)
-                                    context.startActivity(intent)
-                                },
-                                onDelete = {
-                                    WatchHistoryManager.removeWatchHistory(historyItem.videoId)
-                                }
-                            )
-                        }
+                        WatchHistoryItemCard(
+                            historyItem = historyItem,
+                            onClick = {
+                                val intent = Intent(context, VideoPlayerActivity::class.java)
+                                val video = Video(
+                                    id = historyItem.videoId,
+                                    title = historyItem.title,
+                                    duration = "",
+                                    thumbnailUrl = historyItem.thumbnailUrl,
+                                    videoUrl = null,
+                                    details = null
+                                )
+                                intent.putExtra("video", video)
+                                context.startActivity(intent)
+                            },
+                            onDelete = {
+                                WatchHistoryManager.removeWatchHistory(historyItem.videoId)
+                            }
+                        )
                     }
                 }
             }
@@ -205,180 +202,241 @@ private fun EmptyHistoryState(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WatchHistoryItemCard(
+fun WatchHistoryItemCard(
     historyItem: WatchHistoryItem,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     val density = LocalDensity.current
-    val swipeThreshold = with(density) { 60.dp.toPx() }
+    val peekThreshold = with(density) { 65.dp.toPx() }
+    val deleteThreshold = with(density) { 100.dp.toPx() }
 
-    var targetOffsetX by remember { mutableFloatStateOf(0f) }
+    var targetOffsetX by rememberSaveable { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var isVisible by remember { mutableStateOf(true) }
+    var hasPassedPeek by remember { mutableStateOf(false) }
+
     val animatedOffsetX by animateFloatAsState(
         targetValue = targetOffsetX,
         animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = 400f
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
         ),
         label = "offset"
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .pointerInput(animatedOffsetX) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        if (event.changes.any { it.pressed } && animatedOffsetX < 0) {
-                            val change = event.changes.first { it.pressed }
-                            val isInsideCard = change.position.y >= 0f &&
-                                    change.position.y <= size.height &&
-                                    change.position.x >= -animatedOffsetX &&
-                                    change.position.x <= size.width
-                            if (!isInsideCard) {
-                                targetOffsetX = 0f
-                                change.consume()
-                            }
-                        }
-                    }
-                }
-            }
+    val peekAlpha by animateFloatAsState(
+        targetValue = if (hasPassedPeek) 1f else 0f,
+        animationSpec = tween(150),
+        label = "peekAlpha"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0.9f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "scale"
+    )
+
+    LaunchedEffect(isVisible) {
+        if (!isVisible) {
+            delay(200)
+        }
+    }
+
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = scaleIn(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        ) + expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+        exit = scaleOut(
+            targetScale = 0.9f,
+            animationSpec = tween(200)
+        ) + shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(animationSpec = tween(200))
     ) {
         Box(
             modifier = Modifier
-                .matchParentSize()
-                .clickable {
-                    targetOffsetX = 0f
-                    onDelete()
-                }
-                .background(
-                    MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    RoundedCornerShape(12.dp)
-                )
-                .padding(horizontal = 20.dp),
-            contentAlignment = Alignment.CenterEnd
-        ) {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = "删除",
-                tint = Color.White
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(animatedOffsetX.toInt(), 0) }
                 .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (targetOffsetX > -swipeThreshold) {
+                .padding(vertical = 4.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { this.alpha = peekAlpha }
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.error)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "删除",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(animatedOffsetX.toInt(), 0) }
+                    .fillMaxWidth()
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                isDragging = true
+                                hasPassedPeek = targetOffsetX <= -peekThreshold
+                            },
+                            onDragEnd = {
+                                isDragging = false
+                                when {
+                                    targetOffsetX <= -deleteThreshold -> {
+                                        targetOffsetX = -deleteThreshold
+                                        isVisible = false
+                                        kotlinx.coroutines.GlobalScope.launch {
+                                            delay(200)
+                                            onDelete()
+                                        }
+                                    }
+                                    hasPassedPeek -> {
+                                        targetOffsetX = -peekThreshold
+                                    }
+                                    else -> {
+                                        targetOffsetX = 0f
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                isDragging = false
                                 targetOffsetX = 0f
+                                hasPassedPeek = false
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                val newOffset = (targetOffsetX + dragAmount).coerceIn(-deleteThreshold, 0f)
+                                targetOffsetX = newOffset
+                                hasPassedPeek = newOffset <= -peekThreshold
                             }
-                        },
-                        onDragCancel = {
-                            targetOffsetX = 0f
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            val newOffset = targetOffsetX + dragAmount
-                            targetOffsetX = when {
-                                newOffset <= -swipeThreshold -> -swipeThreshold
-                                newOffset >= 0f -> 0f
-                                else -> newOffset
-                            }
+                        )
+                    }
+                    .then(
+                        if (hasPassedPeek) {
+                            Modifier.combinedClickable(
+                                onClick = { },
+                                onLongClick = {
+                                    targetOffsetX = 0f
+                                    hasPassedPeek = false
+                                }
+                            )
+                        } else {
+                            Modifier
                         }
                     )
-                }
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            if (animatedOffsetX < 0) {
-                                targetOffsetX = 0f
-                            } else {
-                                onClick()
-                            }
-                        }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = if (isDragging) 8.dp else 2.dp
+                    ),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(100.dp, 70.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .fillMaxWidth()
+                            .then(
+                                if (targetOffsetX >= -peekThreshold) {
+                                    Modifier.clickable {
+                                        if (animatedOffsetX < -peekThreshold / 2) {
+                                            targetOffsetX = -deleteThreshold
+                                        } else {
+                                            targetOffsetX = 0f
+                                            onClick()
+                                        }
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = historyItem.thumbnailUrl,
-                            contentDescription = historyItem.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
                         Box(
                             modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color.Black.copy(alpha = 0.6f)),
-                            contentAlignment = Alignment.Center
+                                .size(100.dp, 70.dp)
+                                .clip(RoundedCornerShape(8.dp))
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                            AsyncImage(
+                                model = historyItem.thumbnailUrl,
+                                contentDescription = historyItem.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color.Black.copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = historyItem.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (historyItem.duration.isNotBlank()) {
+                                    Text(
+                                        text = historyItem.duration,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                if (historyItem.performer.isNotBlank()) {
+                                    Text(
+                                        text = historyItem.performer,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Text(
+                                text = formatWatchTime(historyItem.watchedAt),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = historyItem.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (historyItem.duration.isNotBlank()) {
-                                Text(
-                                    text = historyItem.duration,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            if (historyItem.performer.isNotBlank()) {
-                                Text(
-                                    text = historyItem.performer,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Text(
-                            text = formatWatchTime(historyItem.watchedAt),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
                     }
                 }
             }

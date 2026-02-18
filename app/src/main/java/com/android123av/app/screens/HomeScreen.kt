@@ -7,6 +7,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -61,12 +64,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -1072,6 +1077,33 @@ private fun SearchDialog(
                             modifier = Modifier.heightIn(max = if (isEditingHistory || isHistoryExpanded) 320.dp else 72.dp)
                         ) {
                             items(actualDisplayHistory, key = { it }) { historyItem ->
+                                var isDeleting by remember { mutableStateOf(false) }
+                                val scale by animateFloatAsState(
+                                    targetValue = if (isDeleting) 0.8f else 1f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
+                                    ),
+                                    label = "itemScale"
+                                )
+                                val itemAlpha by animateFloatAsState(
+                                    targetValue = if (isDeleting) 0f else 1f,
+                                    animationSpec = tween(200),
+                                    label = "itemAlpha"
+                                )
+                                val itemRotationZ by animateFloatAsState(
+                                    targetValue = if (isDeleting) 5f else 0f,
+                                    animationSpec = tween(200),
+                                    label = "itemRotation"
+                                )
+                                
+                                LaunchedEffect(isDeleting) {
+                                    if (isDeleting) {
+                                        delay(300)
+                                        onDeleteHistory(historyItem)
+                                    }
+                                }
+                                
                                 Surface(
                                     onClick = { onHistoryClick(historyItem) },
                                     shape = RoundedCornerShape(12.dp),
@@ -1083,6 +1115,12 @@ private fun SearchDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(32.dp)
+                                        .graphicsLayer {
+                                            scaleX = scale
+                                            scaleY = scale
+                                            this.alpha = itemAlpha
+                                            rotationZ = itemRotationZ
+                                        }
                                 ) {
                                     Box(
                                         modifier = Modifier
@@ -1113,7 +1151,7 @@ private fun SearchDialog(
                                             if (isEditingHistory) {
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Surface(
-                                                    onClick = { onDeleteHistory(historyItem) },
+                                                    onClick = { isDeleting = true },
                                                     shape = CircleShape,
                                                     color = MaterialTheme.colorScheme.errorContainer,
                                                     modifier = Modifier.size(20.dp)

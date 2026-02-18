@@ -20,7 +20,6 @@ import com.android123av.app.state.UserStateManager
 import com.android123av.app.state.rememberUserState
 import com.android123av.app.state.WatchHistoryManager
 import com.android123av.app.network.initializeNetworkService
-import com.android123av.app.WatchHistoryActivity
 import com.android123av.app.state.SearchHistoryManager
 import com.android123av.app.state.rememberAppState
 import com.android123av.app.ui.theme.MyApplicationTheme

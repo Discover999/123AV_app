@@ -10,7 +10,6 @@ import android.webkit.WebViewClient
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.webkit.WebResourceError
 import com.android123av.app.models.*
 import com.android123av.app.constants.AppConstants
 import com.android123av.app.constants.NetworkConstants
@@ -23,13 +22,10 @@ import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Cache
-import okhttp3.ConnectionPool
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 import java.util.concurrent.TimeUnit
 import java.io.IOException
 import java.util.LinkedHashMap

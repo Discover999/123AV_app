@@ -20,8 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.graphics.drawable.IconCompat
+import androidx.core.content.ContextCompat
 import com.android123av.app.models.Video
 import com.android123av.app.screens.VideoPlayerScreen
 import com.android123av.app.state.ThemeStateManager
@@ -47,9 +46,14 @@ class VideoPlayerActivity : ComponentActivity() {
         const val ACTION_SEEK_BACKWARD = "com.android123av.app.ACTION_SEEK_BACKWARD"
         
         private var _pipControlCallback: PipControlCallback? = null
+        private var _isPlayingInPip = mutableStateOf(false)
         
         fun setPipControlCallback(callback: PipControlCallback?) {
             _pipControlCallback = callback
+        }
+        
+        fun updatePipPlayingState(isPlaying: Boolean) {
+            _isPlayingInPip.value = isPlaying
         }
     }
     
@@ -57,26 +61,22 @@ class VideoPlayerActivity : ComponentActivity() {
         fun onPlayPause()
         fun onSeekForward()
         fun onSeekBackward()
+        fun onPlayingStateChanged(isPlaying: Boolean)
     }
     
     private val pipActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d("VideoPlayerActivity", "PiP广播接收: ${intent?.action}")
             when (intent?.action) {
                 ACTION_PLAY_PAUSE -> {
-                    Log.d("VideoPlayerActivity", "PiP按钮: 播放/暂停")
                     _pipControlCallback?.onPlayPause()
                 }
                 ACTION_FORWARD -> {
-                    Log.d("VideoPlayerActivity", "PiP按钮: 快进10秒")
                     _pipControlCallback?.onSeekForward()
                 }
                 ACTION_BACKWARD -> {
-                    Log.d("VideoPlayerActivity", "PiP按钮: 快退10秒")
                     _pipControlCallback?.onSeekBackward()
                 }
                 ACTION_CLOSE -> {
-                    Log.d("VideoPlayerActivity", "PiP按钮: 关闭")
                     finish()
                 }
             }
@@ -124,12 +124,13 @@ class VideoPlayerActivity : ComponentActivity() {
                             Log.d("VideoPlayerActivity", "返回按钮被点击了")
                             // 检查是否启用了自动PiP
                             if (isPipSupported && PipSettingsManager.isAutoPopOnBackEnabled()) {
-                                Log.d("VideoPlayerActivity", "条件满足，准备进入PiP")
                                 enterPip()
                             } else {
-                                Log.d("VideoPlayerActivity", "PiP条件不满足：isPipSupported=$isPipSupported, isAutoPopOnBackEnabled=${PipSettingsManager.isAutoPopOnBackEnabled()}")
                                 finish()
                             }
+                        },
+                        onEnterPip = { isPlaying ->
+                            updatePipActions(isPlaying)
                         }
                     )
                 }
@@ -149,11 +150,7 @@ class VideoPlayerActivity : ComponentActivity() {
             addAction(ACTION_BACKWARD)
             addAction(ACTION_CLOSE)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(pipActionReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(pipActionReceiver, filter)
-        }
+        ContextCompat.registerReceiver(this, pipActionReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
     
     private fun unregisterPipActionReceiver() {
@@ -174,7 +171,7 @@ class VideoPlayerActivity : ComponentActivity() {
         description: String,
         requestCode: Int
     ): RemoteAction {
-        val intent = Intent(actionId)
+        val intent = Intent(actionId).setPackage(packageName)
         val pendingIntent = PendingIntent.getBroadcast(
             this,
             requestCode,
@@ -199,71 +196,80 @@ class VideoPlayerActivity : ComponentActivity() {
             return
         }
         
-        val isEnabled = PipSettingsManager.isAutoPopOnBackEnabled()
-        Log.d("VideoPlayerActivity", "enterPip: 自动PiP已启用=$isEnabled")
-        
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val aspectRatio = Rational(16, 9)
-                
-                val pipParams = PictureInPictureParams.Builder()
-                    .setAspectRatio(aspectRatio)
-                    .setActions(
-                        listOf(
-                            createPipAction(
-                                ACTION_BACKWARD,
-                                android.R.drawable.ic_media_previous,
-                                "快退",
-                                "快退10秒",
-                                1
-                            ),
-                            createPipAction(
-                                ACTION_PLAY_PAUSE,
-                                android.R.drawable.ic_media_play,
-                                "播放/暂停",
-                                "切换播放状态",
-                                0
-                            ),
-                            createPipAction(
-                                ACTION_FORWARD,
-                                android.R.drawable.ic_media_next,
-                                "快进",
-                                "快进10秒",
-                                2
-                            ),
-                            createPipAction(
-                                ACTION_CLOSE,
-                                android.R.drawable.ic_menu_close_clear_cancel,
-                                "关闭",
-                                "关闭小窗",
-                                3
-                            )
-                        )
-                    )
-                    .build()
-                
-                Log.d("VideoPlayerActivity", "正在进入PiP模式...")
-                val result = this.enterPictureInPictureMode(pipParams)
-                Log.d("VideoPlayerActivity", "PiP进入结果: $result")
+                if (pipParams == null) {
+                    updatePipActions(false)
+                }
+                pipParams?.let { this.enterPictureInPictureMode(it) }
             }
         } catch (e: Exception) {
             Log.e("VideoPlayerActivity", "进入PiP失败: ${e.message}", e)
         }
     }
     
-    /**
-     * PiP模式变化回调 - 隐藏控件并保持播放
-     */
+    private var pipParams: PictureInPictureParams? = null
+    
+    private fun updatePipActions(isPlaying: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val playPauseIcon = if (isPlaying) {
+                android.R.drawable.ic_media_pause
+            } else {
+                android.R.drawable.ic_media_play
+            }
+            val playPauseTitle = if (isPlaying) "暂停" else "播放"
+            
+            pipParams = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .setActions(
+                    listOf(
+                        createPipAction(
+                            ACTION_BACKWARD,
+                            android.R.drawable.ic_media_previous,
+                            "快退",
+                            "快退10秒",
+                            1
+                        ),
+                        createPipAction(
+                            ACTION_PLAY_PAUSE,
+                            playPauseIcon,
+                            playPauseTitle,
+                            "切换播放状态",
+                            0
+                        ),
+                        createPipAction(
+                            ACTION_FORWARD,
+                            android.R.drawable.ic_media_next,
+                            "快进",
+                            "快进10秒",
+                            2
+                        ),
+                        createPipAction(
+                            ACTION_CLOSE,
+                            android.R.drawable.ic_menu_close_clear_cancel,
+                            "关闭",
+                            "关闭小窗",
+                            3
+                        )
+                    )
+                )
+                .build()
+            
+            setPictureInPictureParams(pipParams!!)
+        }
+    }
+    
+    @Deprecated("Deprecated in android.app.Activity")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
-        Log.d("VideoPlayerActivity", "PiP模式变化: isInPictureInPictureMode=$isInPictureInPictureMode")
         _isPipMode.value = isInPictureInPictureMode
         
-        if (isInPictureInPictureMode) {
-            Log.d("VideoPlayerActivity", "进入PiP模式，已设置控制回调")
-        } else {
-            Log.d("VideoPlayerActivity", "退出PiP模式，已清除控制回调")
+        if (!isInPictureInPictureMode) {
             _pipControlCallback = null
         }
+    }
+    
+    fun notifyPlayingState(isPlaying: Boolean) {
+        updatePipActions(isPlaying)
     }
 }

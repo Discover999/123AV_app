@@ -1,6 +1,7 @@
 package com.android123av.app.screens
 
 import android.content.Intent
+import android.os.Build
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Toast
@@ -67,14 +68,12 @@ import androidx.compose.foundation.layout.FlowRow
 import kotlinx.coroutines.delay
 import android.content.pm.ActivityInfo
 import android.net.Uri
-import android.os.Build
 import android.view.WindowInsetsController
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.core.content.ContextCompat
 import androidx.media3.common.util.Log
 import com.android123av.app.DownloadsActivity
 import com.android123av.app.VideoPlayerActivity
@@ -131,6 +130,7 @@ private const val DEFAULT_HIDE_DELAY_MS = 5000L
 private const val HIDE_DELAY_THRESHOLD_MS = 500L
 private const val ENABLE_DEBUG_LOG = true
 
+@OptIn(UnstableApi::class)
 private fun debugLog(message: String) {
     if (ENABLE_DEBUG_LOG) {
         Log.d(TAG, message)
@@ -150,7 +150,8 @@ fun VideoPlayerScreen(
     localVideoPath: String? = null,
     localVideoId: String? = null,
     isPipMode: Boolean = false,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onEnterPip: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -268,6 +269,7 @@ fun VideoPlayerScreen(
     val hideControlsJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
 
+    val isPipModeState = rememberUpdatedState(isPipMode)
     val isLockedState = rememberUpdatedState(isLocked)
     val showSpeedSelectorState = rememberUpdatedState(showSpeedSelector)
     val isSeekingState = rememberUpdatedState(isSeeking)
@@ -278,6 +280,7 @@ fun VideoPlayerScreen(
     }
 
     fun scheduleHideControls() {
+        if (isPipModeState.value) return
         hideControlsJob.value?.cancel()
         if (exoPlayerState.value?.isPlaying == true && !isLockedState.value && !showSpeedSelectorState.value && !isSeekingState.value) {
             hideControlsJob.value = coroutineScope.launch {
@@ -295,6 +298,7 @@ fun VideoPlayerScreen(
     }
 
     fun toggleControls() {
+        if (isPipModeState.value) return
         updateInteractionTime()
         if (isFullscreen) {
             hideSystemBars()
@@ -311,6 +315,7 @@ fun VideoPlayerScreen(
     }
 
     fun showControlsTemporarily() {
+        if (isPipModeState.value) return
         updateInteractionTime()
         if (isFullscreen) {
             hideSystemBars()
@@ -345,7 +350,7 @@ fun VideoPlayerScreen(
                 when (state) {
                     Player.STATE_READY -> scheduleHideControls()
                     Player.STATE_ENDED -> {
-                        showControls = true
+                        if (!isPipModeState.value) showControls = true
                         hideControlsJob.value?.cancel()
                         isPlaying = false
                         activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -354,14 +359,18 @@ fun VideoPlayerScreen(
                         }
                     }
                     Player.STATE_BUFFERING -> {
-                        // 缓冲时显示控件
-                        showControls = true
+                        if (!isPipModeState.value) showControls = true
                     }
                 }
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                if (isPipModeState.value) {
+                    VideoPlayerActivity.updatePipPlayingState(playing)
+                    onEnterPip(playing)
+                    return
+                }
                 if (playing) {
                     scheduleHideControls()
                     activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -381,7 +390,7 @@ fun VideoPlayerScreen(
                 val errorMsg = PlaybackErrorMessages[error.errorCode]
                     ?: "播放错误: ${error.message ?: PLAYBACK_ERROR_UNKNOWN}"
                 onPlayerError(errorMsg)
-                showControls = true
+                if (!isPipModeState.value) showControls = true
                 hideControlsJob.value?.cancel()
             }
         })
@@ -558,11 +567,15 @@ fun VideoPlayerScreen(
         setSystemUIVisibility(isFullscreen)
     }
     
-    // PiP模式下隐藏控件
+    // PiP模式下隐藏自定义控件（系统PiP自带控件）
     LaunchedEffect(isPipMode) {
         if (isPipMode) {
-            Log.d("VideoPlayerScreen", "进入PiP模式，隐藏控件")
             showControls = false
+            exoPlayer?.let { player ->
+                val playing = player.isPlaying
+                VideoPlayerActivity.updatePipPlayingState(playing)
+                onEnterPip(playing)
+            }
         }
     }
 
@@ -591,11 +604,15 @@ fun VideoPlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
-                    wasPlayingBeforePause = exoPlayer?.isPlaying == true
-                    exoPlayer?.pause()
+                    val activity = activity
+                    val isInPip = activity != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity.isInPictureInPictureMode
+                    if (!isInPip) {
+                        wasPlayingBeforePause = exoPlayer?.isPlaying == true
+                        exoPlayer?.pause()
+                    }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (wasPlayingBeforePause) {
+                    if (!isPipModeState.value && wasPlayingBeforePause) {
                         exoPlayer?.play()
                     }
                 }
@@ -608,43 +625,76 @@ fun VideoPlayerScreen(
         }
     }
     
-    DisposableEffect(isPipMode, context) {
+    DisposableEffect(exoPlayer) {
         val callback = object : VideoPlayerActivity.PipControlCallback {
             override fun onPlayPause() {
-                exoPlayer?.let { player ->
-                    Log.d("VideoPlayerScreen", "PiP回调: 播放/暂停")
-                    if (player.isPlaying) {
+                val player = exoPlayer ?: return
+                try {
+                    val wasPlaying = player.isPlaying
+                    if (wasPlaying) {
                         player.pause()
                     } else {
                         player.play()
                     }
+                    VideoPlayerActivity.updatePipPlayingState(!wasPlaying)
+                    onEnterPip(!wasPlaying)
+                } catch (e: Exception) {
+                    Log.e("VideoPlayerScreen", "播放/暂停失败: ${e.message}")
                 }
             }
             
             override fun onSeekForward() {
-                exoPlayer?.let { player ->
-                    Log.d("VideoPlayerScreen", "PiP回调: 快进10秒")
-                    val newPosition = (player.currentPosition + 10000).coerceAtMost(player.duration)
+                val player = exoPlayer ?: return
+                try {
+                    val wasPlaying = player.isPlaying
+                    val currentPosition = player.currentPosition
+                    val duration = player.duration
+                    if (duration <= 0) return
+                    
+                    val newPosition = (currentPosition + 10000).coerceAtMost(duration)
+                    
+                    if (wasPlaying) {
+                        player.pause()
+                    }
                     player.seekTo(newPosition)
+                    if (wasPlaying) {
+                        player.play()
+                    }
+                } catch (e: Exception) {
+                    Log.e("VideoPlayerScreen", "快进失败: ${e.message}")
                 }
             }
             
             override fun onSeekBackward() {
-                exoPlayer?.let { player ->
-                    Log.d("VideoPlayerScreen", "PiP回调: 快退10秒")
-                    val newPosition = (player.currentPosition - 10000).coerceAtLeast(0)
+                val player = exoPlayer ?: return
+                try {
+                    val wasPlaying = player.isPlaying
+                    val currentPosition = player.currentPosition
+                    
+                    val newPosition = (currentPosition - 10000).coerceAtLeast(0)
+                    
+                    if (wasPlaying) {
+                        player.pause()
+                    }
                     player.seekTo(newPosition)
+                    if (wasPlaying) {
+                        player.play()
+                    }
+                } catch (e: Exception) {
+                    Log.e("VideoPlayerScreen", "快退失败: ${e.message}")
                 }
+            }
+            
+            override fun onPlayingStateChanged(isPlaying: Boolean) {
+                VideoPlayerActivity.updatePipPlayingState(isPlaying)
+                onEnterPip(isPlaying)
             }
         }
         
         VideoPlayerActivity.setPipControlCallback(callback)
         
-        Log.d("VideoPlayerScreen", "已注册PiP控制回调: isPipMode=$isPipMode")
-        
         onDispose {
             VideoPlayerActivity.setPipControlCallback(null)
-            Log.d("VideoPlayerScreen", "已注销PiP控制回调")
         }
     }
 
@@ -809,7 +859,7 @@ fun VideoPlayerScreen(
                             PlayerControls(
                                 exoPlayer = exoPlayer,
                                 isFullscreen = isFullscreen,
-                                isPipMode = isPipMode,
+                                isPipMode = isPipModeState.value,
                                 isLocked = isLocked,
                                 showSpeedSelector = showSpeedSelector,
                                 currentSpeedIndex = currentSpeedIndex,
@@ -842,8 +892,8 @@ fun VideoPlayerScreen(
                                         }
                                     }
                                 },
-                                onShowControls = { showControls = true },
-                                onHideControls = { showControls = false },
+                                onShowControls = { if (!isPipModeState.value) showControls = true },
+                                onHideControls = { if (!isPipModeState.value) showControls = false },
                                 onUpdateInteractionTime = { updateInteractionTime() },
                                 onHideControlsNow = { hideControls() },
                                 onShowControlsTemporarily = { toggleControls() },
@@ -991,7 +1041,7 @@ fun VideoPlayerScreen(
                                     PlayerControls(
                                         exoPlayer = exoPlayer,
                                         isFullscreen = isFullscreen,
-                                        isPipMode = isPipMode,
+                                        isPipMode = isPipModeState.value,
                                         isLocked = isLocked,
                                         showSpeedSelector = showSpeedSelector,
                                         currentSpeedIndex = currentSpeedIndex,
@@ -1024,8 +1074,8 @@ fun VideoPlayerScreen(
                                                 }
                                             }
                                         },
-                                        onShowControls = { showControls = true },
-                                        onHideControls = { showControls = false },
+                                        onShowControls = { if (!isPipModeState.value) showControls = true },
+                                        onHideControls = { if (!isPipModeState.value) showControls = false },
                                         onUpdateInteractionTime = { updateInteractionTime() },
                                         onHideControlsNow = { hideControls() },
                                         onShowControlsTemporarily = { toggleControls() },
@@ -1267,7 +1317,7 @@ fun VideoPlayerScreen(
                                     PlayerControls(
                                         exoPlayer = exoPlayer,
                                         isFullscreen = isFullscreen,
-                                        isPipMode = isPipMode,
+                                        isPipMode = isPipModeState.value,
                                         isLocked = isLocked,
                                         showSpeedSelector = showSpeedSelector,
                                         currentSpeedIndex = currentSpeedIndex,
@@ -1300,8 +1350,8 @@ fun VideoPlayerScreen(
                                                 }
                                             }
                                         },
-                                        onShowControls = { showControls = true },
-                                        onHideControls = { showControls = false },
+                                        onShowControls = { if (!isPipModeState.value) showControls = true },
+                                        onHideControls = { if (!isPipModeState.value) showControls = false },
                                         onUpdateInteractionTime = { updateInteractionTime() },
                                         onHideControlsNow = { hideControls() },
                                         onShowControlsTemporarily = { toggleControls() },
@@ -1793,6 +1843,7 @@ private fun PlayerControls(
     showSettingsPanel: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val isPipModeState = rememberUpdatedState(isPipMode)
 
     var currentPosition by remember(exoPlayer) { mutableLongStateOf(exoPlayer?.currentPosition ?: 0L) }
     var bufferedPosition by remember(exoPlayer) { mutableLongStateOf(exoPlayer?.bufferedPosition ?: 0L) }
@@ -1861,7 +1912,7 @@ private fun PlayerControls(
                         isPlaying = isPlaying,
                         controlsAlpha = controlsAlpha,
                         isFullscreen = isFullscreen,
-                        isPipMode = isPipMode,
+                        isPipMode = isPipModeState.value,
                         bufferSpeed = bufferSpeed,
                         onBack = onBack,
                         onFullscreen = onFullscreen,
@@ -2062,11 +2113,12 @@ private fun VideoPlayerOverlay(
                 // 顶栏：标题和分辨率信息，右侧功能按钮
                 TopBar(
                     isFullscreen = isFullscreen,
-                    isPipMode = isPipMode,
                     onBack = onBack,
                     onFullscreen = onFullscreen,
                     onLock = onLock,
                     onResizeModeChange = onResizeModeChange,
+                    onSeekBackward = onSeekBackward,
+                    onSeekForward = onSeekForward,
                     resizeMode = resizeMode,
                     currentSpeedIndex = currentSpeedIndex,
                     showSpeedSelector = showSpeedSelector,
@@ -2167,11 +2219,12 @@ private fun TapGestureLayer(
 @Composable
 private fun TopBar(
     isFullscreen: Boolean,
-    isPipMode: Boolean = false,
     onBack: () -> Unit,
     onFullscreen: () -> Unit,
     onLock: () -> Unit,
     onResizeModeChange: () -> Unit,
+    onSeekBackward: () -> Unit = {},
+    onSeekForward: () -> Unit = {},
     resizeMode: Int,
     currentSpeedIndex: Int = 2,
     showSpeedSelector: Boolean = false,
@@ -2200,52 +2253,29 @@ private fun TopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧：返回按钮和标题（同一行）或全屏按钮（PiP模式）
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (isPipMode) {
-                // PiP模式下显示全屏按钮
-                IconButton(
-                    onClick = {
-                        HapticUtils.vibrateClick(context)
-                        onFullscreen()
-                    },
-                    modifier = Modifier.size(36.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Fullscreen,
-                        contentDescription = "全屏",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            } else {
-                // 返回按钮
-                IconButton(
-                    onClick = {
-                        HapticUtils.vibrateClick(context)
-                        onBack()
-                    },
-                    modifier = Modifier.size(36.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+            IconButton(
+                onClick = {
+                    HapticUtils.vibrateClick(context)
+                    onBack()
+                },
+                modifier = Modifier.size(36.dp),
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    modifier = Modifier.size(22.dp)
+                )
             }
 
-            // 标题和分辨率信息（非PiP模式下显示）
-            if (!isPipMode && videoTitle.isNotBlank()) {
+            if (videoTitle.isNotBlank()) {
                 Column(
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
@@ -2278,71 +2308,46 @@ private fun TopBar(
             }
         }
 
-        // 右侧：功能按钮
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isPipMode) {
-                // PiP模式下只显示播放/暂停按钮
-                IconButton(
-                    onClick = {
-                        HapticUtils.vibrateClick(context)
-                        onPlayPauseClick()
-                    },
-                    modifier = Modifier.size(36.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
-                        modifier = Modifier.size(24.dp)
-                    )
+            SpeedButton(
+                currentSpeedIndex = currentSpeedIndex,
+                showSpeedSelector = showSpeedSelector,
+                onSpeedSelectorToggle = {
+                    HapticUtils.vibrateClick(context)
+                    onSpeedSelectorToggle()
+                },
+                onSpeedChange = { index ->
+                    HapticUtils.vibrateClick(context)
+                    onSpeedChange(index)
                 }
-            } else {
-                // 普通模式下显示所有按钮
-                // 倍速按钮
-                SpeedButton(
-                    currentSpeedIndex = currentSpeedIndex,
-                    showSpeedSelector = showSpeedSelector,
-                    onSpeedSelectorToggle = {
+            )
+
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "信息",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable {
                         HapticUtils.vibrateClick(context)
-                        onSpeedSelectorToggle()
-                    },
-                    onSpeedChange = { index ->
-                        HapticUtils.vibrateClick(context)
-                        onSpeedChange(index)
+                        onInfoClick()
                     }
-                )
+            )
 
-                // 信息按钮
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = "信息",
-                    tint = Color.White,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clickable {
-                            HapticUtils.vibrateClick(context)
-                            onInfoClick()
-                        }
-                )
-
-                // 设置按钮
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "设置",
-                    tint = Color.White,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clickable {
-                            HapticUtils.vibrateClick(context)
-                            onSettingsClick()
-                        }
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "设置",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable {
+                        HapticUtils.vibrateClick(context)
+                        onSettingsClick()
+                    }
+            )
         }
     }
 }
@@ -3792,12 +3797,6 @@ fun PlayerSettingsPanel(
     resizeMode: Int,
     onResizeModeChange: () -> Unit
 ) {
-    val animatedVisibility by animateVisibilityAsState(
-        targetState = showPanel,
-        animationSpec = tween(300),
-        label = "panelVisibility"
-    )
-
     var localSpeedIndex by remember { mutableIntStateOf(currentSpeedIndex) }
     var localResizeMode by remember { mutableIntStateOf(resizeMode) }
 
@@ -3809,21 +3808,93 @@ fun PlayerSettingsPanel(
         localResizeMode = resizeMode
     }
 
-    if (animatedVisibility) {
+    val context = LocalContext.current
+
+    val dismissHandler = remember {
+        {
+            HapticUtils.vibrateLight(context)
+            onDismiss()
+        }
+    }
+
+    AnimatedVisibility(
+        visible = showPanel,
+        enter = fadeIn(animationSpec = tween(250, easing = FastOutSlowInEasing)),
+        exit = fadeOut(animationSpec = tween(250, easing = FastOutSlowInEasing))
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                .clickable { onDismiss() }
+                .background(Color.Black.copy(alpha = 0.6f))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            tryAwaitRelease()
+                            dismissHandler()
+                        }
+                    )
+                }
+        )
+    }
+
+    AnimatedVisibility(
+        visible = showPanel,
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = tween(
+                durationMillis = 350,
+                easing = CubicBezierEasing(0.05f, 0.4f, 0.2f, 1f)
+            )
+        ) + expandVertically(
+            expandFrom = Alignment.Bottom,
+            animationSpec = tween(350, easing = CubicBezierEasing(0.05f, 0.4f, 0.2f, 1f))
+        ) + fadeIn(
+            animationSpec = tween(
+                durationMillis = 250,
+                easing = FastOutSlowInEasing
+            )
+        ),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = tween(
+                durationMillis = 300,
+                easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+            )
+        ) + shrinkVertically(
+            shrinkTowards = Alignment.Bottom,
+            animationSpec = tween(
+                durationMillis = 300,
+                easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+            )
+        ) + fadeOut(
+            animationSpec = tween(
+                durationMillis = 200,
+                easing = FastOutSlowInEasing
+            )
+        ),
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) { detectTapGestures { } }
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.BottomCenter
         ) {
             Surface(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .clickable { },
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                tonalElevation = 8.dp
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                tryAwaitRelease()
+                                dismissHandler()
+                            }
+                        )
+                    },
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 12.dp,
+                shadowElevation = 16.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -3859,6 +3930,7 @@ fun PlayerSettingsPanel(
                         options = playbackSpeeds.map { it.label },
                         selectedIndex = localSpeedIndex,
                         onOptionSelected = { index ->
+                            HapticUtils.vibrateLight(context)
                             localSpeedIndex = index
                             onSpeedChange(index)
                         }
@@ -3885,6 +3957,7 @@ fun PlayerSettingsPanel(
                             FilterChip(
                                 selected = localResizeMode == mode,
                                 onClick = {
+                                    HapticUtils.vibrateLight(context)
                                     localResizeMode = mode
                                     onResizeModeChange()
                                 },
@@ -3897,32 +3970,15 @@ fun PlayerSettingsPanel(
                     Spacer(modifier = Modifier.height(32.dp))
 
                     Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth()
+                        onClick = dismissHandler,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("完成")
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun animateVisibilityAsState(
-    targetState: Boolean,
-    animationSpec: AnimationSpec<Float>,
-    label: String
-): State<Boolean> {
-    return if (targetState) {
-        remember { mutableStateOf(true) }
-    } else {
-        val animatedAlpha by animateFloatAsState(
-            targetValue = if (targetState) 1f else 0f,
-            animationSpec = animationSpec,
-            label = label
-        )
-        remember(animatedAlpha) { mutableStateOf(animatedAlpha > 0f) }
     }
 }
 

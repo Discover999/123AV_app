@@ -11,12 +11,11 @@ import androidx.activity.ComponentActivity
 import com.android123av.app.constants.AppConstants
 import com.android123av.app.constants.NetworkConstants
 import com.android123av.app.models.Video
-import com.android123av.app.models.VideoPart
 import kotlinx.coroutines.*
 import kotlinx.coroutines.selects.select
 import okhttp3.Request
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -25,7 +24,7 @@ object ImprovedVideoUrlFetcher {
     private val cachedUrls = ConcurrentHashMap<String, CachedVideoUrl>()
     private val fetchAttempts = ConcurrentHashMap<String, AtomicInteger>()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var webView: WebView? = null
+    private var webViewRef: WeakReference<WebView>? = null
 
     data class CachedVideoUrl(
         val url: String,
@@ -158,7 +157,7 @@ object ImprovedVideoUrlFetcher {
                     }
 
                     try {
-                        result = select<String?> {
+                        result = select {
                             httpDeferred.onAwait { httpResult ->
                                 if (!httpResult.isNullOrBlank()) httpResult else null
                             }
@@ -268,10 +267,12 @@ object ImprovedVideoUrlFetcher {
                 return@withContext null
             }
 
-            val currentWebView = webView ?: WebView(context).also {
-                webView = it
-                configureWebView(it)
-            }
+            val existingWebView = webViewRef?.get()
+            val currentWebView = existingWebView
+                ?: WebView(context.applicationContext).also {
+                    webViewRef = WeakReference(it)
+                    configureWebView(it)
+                }
 
             val cleanup = {
                 try {
@@ -416,8 +417,8 @@ object ImprovedVideoUrlFetcher {
 
     fun clearWebView() {
         try {
-            webView?.destroy()
-            webView = null
+            webViewRef?.get()?.destroy()
+            webViewRef = null
         } catch (e: Exception) {
         }
     }
@@ -463,10 +464,6 @@ object ImprovedVideoUrlFetcher {
         }
     }
 
-    fun getCacheSize(): Int = cachedUrls.size
-
-    fun getAttemptCount(videoId: String): Int = fetchAttempts[videoId]?.get() ?: 0
-
     private fun configureWebView(webView: WebView) {
         webView.settings.apply {
             javaScriptEnabled = true
@@ -495,15 +492,13 @@ object ImprovedVideoUrlFetcher {
 
     fun warmUpWebView(context: Context) {
         try {
-            if (webView != null) return
-            // create and configure a hidden WebView on main thread
+            if (webViewRef?.get() != null) return
             Handler(Looper.getMainLooper()).post {
                 try {
-                    val wv = WebView(context)
+                    val wv = WebView(context.applicationContext)
                     configureWebView(wv)
-                    // load a lightweight blank page to initialize
                     wv.loadUrl("about:blank")
-                    webView = wv
+                    webViewRef = WeakReference(wv)
                 } catch (e: Exception) {
                 }
             }
@@ -513,10 +508,12 @@ object ImprovedVideoUrlFetcher {
 
     @Suppress("UNCHECKED_CAST")
     suspend fun <T> useSharedWebView(context: Context, block: suspend (WebView) -> T): T = withContext(Dispatchers.Main) {
-        val currentWebView = webView ?: WebView(context).also {
-            webView = it
-            configureWebView(it)
-        }
+        val existingWebView = webViewRef?.get()
+        val currentWebView = existingWebView
+            ?: WebView(context.applicationContext).also {
+                webViewRef = WeakReference(it)
+                configureWebView(it)
+            }
 
         try {
             block(currentWebView)
