@@ -369,7 +369,6 @@ fun VideoPlayerScreen(
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
                 if (isPipModeState.value) {
-                    VideoPlayerActivity.updatePipPlayingState(playing)
                     onEnterPip(playing)
                     return
                 }
@@ -622,11 +621,13 @@ fun VideoPlayerScreen(
         if (isPipMode) {
             showControls = false
             exoPlayer?.let { player ->
-                val playing = player.isPlaying
-                VideoPlayerActivity.updatePipPlayingState(playing)
-                onEnterPip(playing)
+                onEnterPip(player.isPlaying)
             }
         }
+    }
+    
+    LaunchedEffect(exoPlayer) {
+        (activity as? VideoPlayerActivity)?.setPlayer(exoPlayer)
     }
 
     fun toggleResizeMode() {
@@ -640,7 +641,6 @@ fun VideoPlayerScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            exoPlayer?.release()
             hideControlsJob.value?.cancel()
             setSystemUIVisibility(false)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -686,7 +686,6 @@ fun VideoPlayerScreen(
                     } else {
                         player.play()
                     }
-                    VideoPlayerActivity.updatePipPlayingState(!wasPlaying)
                     onEnterPip(!wasPlaying)
                 } catch (e: Exception) {
                     Log.e("VideoPlayerScreen", "播放/暂停失败: ${e.message}")
@@ -733,11 +732,6 @@ fun VideoPlayerScreen(
                 } catch (e: Exception) {
                     Log.e("VideoPlayerScreen", "快退失败: ${e.message}")
                 }
-            }
-            
-            override fun onPlayingStateChanged(isPlaying: Boolean) {
-                VideoPlayerActivity.updatePipPlayingState(isPlaying)
-                onEnterPip(isPlaying)
             }
         }
         

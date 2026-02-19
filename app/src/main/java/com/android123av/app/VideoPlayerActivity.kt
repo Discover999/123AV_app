@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.media3.common.Player
 import com.android123av.app.models.Video
 import com.android123av.app.screens.VideoPlayerScreen
 import com.android123av.app.state.ThemeStateManager
@@ -33,27 +34,19 @@ class VideoPlayerActivity : ComponentActivity() {
         get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     
     private val _isPipMode = mutableStateOf(false)
-    private var wasPlayingBeforePip = false
-    private var currentVideoPosition = 0L
+    private var currentPlayer: Player? = null
+    private var shouldFinishOnExitPip = false
     
     companion object {
         const val ACTION_PLAY_PAUSE = "com.android123av.app.PIP_ACTION_PLAY_PAUSE"
         const val ACTION_FORWARD = "com.android123av.app.PIP_ACTION_FORWARD"
         const val ACTION_BACKWARD = "com.android123av.app.PIP_ACTION_BACKWARD"
         const val ACTION_CLOSE = "com.android123av.app.PIP_ACTION_CLOSE"
-        const val ACTION_TOGGLE_PLAY_PAUSE = "com.android123av.app.ACTION_TOGGLE_PLAY_PAUSE"
-        const val ACTION_SEEK_FORWARD = "com.android123av.app.ACTION_SEEK_FORWARD"
-        const val ACTION_SEEK_BACKWARD = "com.android123av.app.ACTION_SEEK_BACKWARD"
         
         private var _pipControlCallback: PipControlCallback? = null
-        private var _isPlayingInPip = mutableStateOf(false)
         
         fun setPipControlCallback(callback: PipControlCallback?) {
             _pipControlCallback = callback
-        }
-        
-        fun updatePipPlayingState(isPlaying: Boolean) {
-            _isPlayingInPip.value = isPlaying
         }
     }
     
@@ -61,24 +54,43 @@ class VideoPlayerActivity : ComponentActivity() {
         fun onPlayPause()
         fun onSeekForward()
         fun onSeekBackward()
-        fun onPlayingStateChanged(isPlaying: Boolean)
+    }
+    
+    fun setPlayer(player: Player?) {
+        currentPlayer = player
     }
     
     private val pipActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                ACTION_PLAY_PAUSE -> {
-                    _pipControlCallback?.onPlayPause()
-                }
-                ACTION_FORWARD -> {
-                    _pipControlCallback?.onSeekForward()
-                }
-                ACTION_BACKWARD -> {
-                    _pipControlCallback?.onSeekBackward()
-                }
-                ACTION_CLOSE -> {
-                    finish()
-                }
+                ACTION_PLAY_PAUSE -> _pipControlCallback?.onPlayPause()
+                ACTION_FORWARD -> _pipControlCallback?.onSeekForward()
+                ACTION_BACKWARD -> _pipControlCallback?.onSeekBackward()
+                ACTION_CLOSE -> stopPlaybackAndFinish()
+            }
+        }
+    }
+    
+    private fun stopPlaybackAndFinish() {
+        shouldFinishOnExitPip = true
+        
+        try {
+            currentPlayer?.let { player ->
+                player.pause()
+                player.stop()
+            }
+        } catch (e: Exception) {
+            Log.e("VideoPlayerActivity", "停止播放器失败: ${e.message}")
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode) {
+            return
+        }
+        
+        runOnUiThread {
+            forceStopPlayer()
+            if (!isFinishing) {
+                finish()
             }
         }
     }
@@ -102,7 +114,7 @@ class VideoPlayerActivity : ComponentActivity() {
         val localVideoPath = intent.getStringExtra("localVideoPath")
         val videoId = intent.getStringExtra("videoId")
         
-        Log.d("VideoPlayerActivity", "onCreate: videoId=$videoId, localVideoPath=$localVideoPath")
+        Log.d("VideoPlayerActivity", "onCreate: videoId=$videoId")
         
         setContent {
             val currentTheme by ThemeStateManager.currentTheme.collectAsState()
@@ -137,9 +149,31 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
     
+    override fun onStop() {
+        if (!_isPipMode.value && !isFinishing) {
+            try {
+                currentPlayer?.pause()
+            } catch (e: Exception) {
+                Log.e("VideoPlayerActivity", "暂停播放器失败: ${e.message}")
+            }
+        }
+        super.onStop()
+    }
+    
     override fun onDestroy() {
+        forceStopPlayer()
         super.onDestroy()
         unregisterPipActionReceiver()
+    }
+    
+    private fun forceStopPlayer() {
+        try {
+            currentPlayer?.stop()
+            currentPlayer?.release()
+            currentPlayer = null
+        } catch (e: Exception) {
+            Log.e("VideoPlayerActivity", "强制停止播放器失败: ${e.message}")
+        }
     }
     
     private fun registerPipActionReceiver() {
@@ -189,11 +223,7 @@ class VideoPlayerActivity : ComponentActivity() {
      * 进入画中画(PiP)模式
      */
     private fun enterPip() {
-        Log.d("VideoPlayerActivity", "enterPip: isPipSupported=$isPipSupported")
-        if (!isPipSupported) {
-            Log.w("VideoPlayerActivity", "设备不支持PiP，需要Android 8.0+")
-            return
-        }
+        if (!isPipSupported) return
         
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -203,7 +233,7 @@ class VideoPlayerActivity : ComponentActivity() {
                 pipParams?.let { this.enterPictureInPictureMode(it) }
             }
         } catch (e: Exception) {
-            Log.e("VideoPlayerActivity", "进入PiP失败: ${e.message}", e)
+            Log.e("VideoPlayerActivity", "进入PiP失败: ${e.message}")
         }
     }
     
@@ -265,6 +295,27 @@ class VideoPlayerActivity : ComponentActivity() {
         
         if (!isInPictureInPictureMode) {
             _pipControlCallback = null
+            
+            if (shouldFinishOnExitPip) {
+                runOnUiThread {
+                    forceStopPlayer()
+                    if (!isFinishing) {
+                        finish()
+                    }
+                }
+            } else {
+                window.decorView.postDelayed({
+                    if (!isFinishing) {
+                        val isResumed = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                        if (!isResumed) {
+                            runOnUiThread {
+                                forceStopPlayer()
+                                finish()
+                            }
+                        }
+                    }
+                }, 100)
+            }
         }
     }
     
