@@ -72,6 +72,7 @@ class MainApplication : Application() {
             ImprovedVideoUrlFetcher.immediateRelease()
         } catch (_: Exception) {
         }
+        @Suppress("DEPRECATION")
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
             VideoSessionCache.clear()
             clearVideoUrlCache()

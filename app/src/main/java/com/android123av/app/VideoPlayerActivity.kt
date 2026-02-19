@@ -288,6 +288,7 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
     
+    @Suppress("DEPRECATION")
     @Deprecated("Deprecated in android.app.Activity")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
