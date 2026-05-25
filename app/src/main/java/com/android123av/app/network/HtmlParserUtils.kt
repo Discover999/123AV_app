@@ -2,10 +2,44 @@ package com.android123av.app.network
 
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.select.Elements
 import com.android123av.app.models.PaginationInfo
 import com.android123av.app.models.SortOption
+import org.jsoup.Jsoup
 
 object HtmlParserUtils {
+    
+    fun selectFirstAvailable(doc: Document, vararg selectors: String): Elements {
+        for (selector in selectors) {
+            val elements = doc.select(selector)
+            if (elements.isNotEmpty()) {
+                return elements
+            }
+        }
+        return Elements()
+    }
+    
+    fun <T> parseListItems(
+        html: String,
+        itemTypeName: String,
+        itemMapper: (Element, Int) -> T?
+    ): Pair<List<T>, PaginationInfo> {
+        val doc = Jsoup.parse(html)
+        val itemsList = mutableListOf<T>()
+        
+        val elements = selectFirstAvailable(doc, "div.bl-item", "div.box-item", "div.item")
+        
+        elements.forEachIndexed { index, element ->
+            val item = itemMapper(element, index)
+            if (item != null) {
+                itemsList.add(item)
+            }
+        }
+        
+        val paginationInfo = parsePaginationInfo(doc, "", itemTypeName)
+        
+        return Pair(itemsList, paginationInfo)
+    }
     
     fun extractLinkInfo(element: Element): Pair<String, String>? {
         val linkElement = element.selectFirst("a") ?: return null

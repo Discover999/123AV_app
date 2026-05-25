@@ -135,20 +135,7 @@ fun parseActressesFromHtml(html: String): Pair<List<Actress>, PaginationInfo> {
 
 fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>, PaginationInfo> {
     return ExceptionHandler.safeCall("parseGenresFromHtml", Pair(emptyList(), PaginationInfo(1, 1, false, false))) {
-        val doc = Jsoup.parse(html)
-        val genresList = mutableListOf<Genre>()
-        
-        var genreElements = doc.select("div.bl-item")
-        
-        if (genreElements.isEmpty()) {
-            genreElements = doc.select("div.box-item")
-        }
-        
-        if (genreElements.isEmpty()) {
-            genreElements = doc.select("div.item")
-        }
-        
-        genreElements.forEach { element ->
+        val (genresList, paginationInfo) = HtmlParserUtils.parseListItems(html, "类型") { element, index ->
             val linkInfo = HtmlParserUtils.extractLinkInfo(element)
             if (linkInfo != null) {
                 val (_, id) = linkInfo
@@ -156,13 +143,15 @@ fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>
                 val videoCount = HtmlParserUtils.extractVideoCount(element)
                 
                 if (name.isNotEmpty()) {
-                    val finalId = id.ifEmpty { "genre_${System.currentTimeMillis()}_${genresList.size}" }
-                    genresList.add(Genre(finalId, name, videoCount))
+                    val finalId = id.ifEmpty { "genre_${System.currentTimeMillis()}_$index" }
+                    Genre(finalId, name, videoCount)
+                } else {
+                    null
                 }
+            } else {
+                null
             }
         }
-        
-        val paginationInfo = HtmlParserUtils.parsePaginationInfo(doc, currentUrl, "类型")
         
         Pair(genresList, paginationInfo)
     }
@@ -173,20 +162,7 @@ fun parseGenresFromHtml(html: String, currentUrl: String = ""): Pair<List<Genre>
 
 fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studio>, PaginationInfo> {
     return ExceptionHandler.safeCall("parseStudiosFromHtml", Pair(emptyList(), PaginationInfo(1, 1, false, false))) {
-        val doc = Jsoup.parse(html)
-        val studiosList = mutableListOf<Studio>()
-        
-        var studioElements = doc.select("div.bl-item")
-        
-        if (studioElements.isEmpty()) {
-            studioElements = doc.select("div.box-item")
-        }
-        
-        if (studioElements.isEmpty()) {
-            studioElements = doc.select("div.item")
-        }
-        
-        studioElements.forEach { element ->
+        val (studiosList, paginationInfo) = HtmlParserUtils.parseListItems(html, "制作人") { element, index ->
             val linkInfo = HtmlParserUtils.extractLinkInfo(element)
             if (linkInfo != null) {
                 val (_, id) = linkInfo
@@ -194,13 +170,15 @@ fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studi
                 val videoCount = HtmlParserUtils.extractVideoCount(element)
                 
                 if (name.isNotEmpty()) {
-                    val finalId = id.ifEmpty { "studio_${System.currentTimeMillis()}_${studiosList.size}" }
-                    studiosList.add(Studio(finalId, name, videoCount))
+                    val finalId = id.ifEmpty { "studio_${System.currentTimeMillis()}_$index" }
+                    Studio(finalId, name, videoCount)
+                } else {
+                    null
                 }
+            } else {
+                null
             }
         }
-        
-        val paginationInfo = HtmlParserUtils.parsePaginationInfo(doc, currentUrl, "制作人")
         
         Pair(studiosList, paginationInfo)
     }
@@ -211,12 +189,7 @@ fun parseStudiosFromHtml(html: String, currentUrl: String = ""): Pair<List<Studi
 
 fun parseSeriesFromHtml(html: String, currentUrl: String = ""): Pair<List<Series>, PaginationInfo> {
     return ExceptionHandler.safeCall("parseSeriesFromHtml", Pair(emptyList(), PaginationInfo(1, 1, false, false))) {
-        val doc = Jsoup.parse(html)
-        val seriesList = mutableListOf<Series>()
-        
-        val seriesElements = doc.select("div.bl-item")
-        
-        seriesElements.forEach { element ->
+        val (seriesList, paginationInfo) = HtmlParserUtils.parseListItems(html, "系列") { element, _ ->
             val linkInfo = HtmlParserUtils.extractLinkInfo(element)
             if (linkInfo != null) {
                 val (_, id) = linkInfo
@@ -224,12 +197,14 @@ fun parseSeriesFromHtml(html: String, currentUrl: String = ""): Pair<List<Series
                 val videoCount = HtmlParserUtils.extractVideoCount(element)
                 
                 if (name.isNotEmpty() && id.isNotEmpty()) {
-                    seriesList.add(Series(id, name, videoCount))
+                    Series(id, name, videoCount)
+                } else {
+                    null
                 }
+            } else {
+                null
             }
         }
-        
-        val paginationInfo = HtmlParserUtils.parsePaginationInfo(doc, currentUrl, "系列")
         
         Pair(seriesList, paginationInfo)
     }

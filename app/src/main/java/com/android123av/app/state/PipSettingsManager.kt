@@ -12,7 +12,7 @@ object PipSettingsManager {
     private const val KEY_AUTO_PIP_ON_BACK = "auto_pip_on_back"
     private const val KEY_LAST_PIP_SIZE_SCALE = "last_pip_size_scale"
     
-    private const val DEFAULT_AUTO_PIP_ON_BACK = true
+    private const val DEFAULT_AUTO_PIP_ON_BACK = false
     private const val DEFAULT_PIP_SIZE_SCALE = 0.5f
     
     private val _autoPopOnBack = MutableStateFlow(DEFAULT_AUTO_PIP_ON_BACK)
