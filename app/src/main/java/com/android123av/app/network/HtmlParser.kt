@@ -12,6 +12,8 @@ import com.android123av.app.utils.ExceptionHandler
 import org.jsoup.Jsoup
 
 fun parseVideoDetails(html: String): VideoDetails? {
+    require(html.isNotBlank()) { "HTML content cannot be blank" }
+    
     return ExceptionHandler.safeCallOrNull("parseVideoDetails") {
         val doc = Jsoup.parse(html)
         

@@ -83,6 +83,8 @@ class ExoPlayerManager(private val context: Context) {
     }
     
     fun loadVideo(url: String) {
+        require(url.isNotBlank()) { "Video URL cannot be blank" }
+        
         val player = _player ?: return
         val source = createMediaSource(url)
         player.setMediaSource(source)
