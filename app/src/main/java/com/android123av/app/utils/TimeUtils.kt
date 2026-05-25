@@ -1,6 +1,15 @@
 package com.android123av.app.utils
 
+/**
+ * 时间格式化工具类
+ * 提供视频时长、时间戳等格式化功能
+ */
 object TimeUtils {
+    /**
+     * 将毫秒时间格式化为 HH:MM:SS 或 MM:SS 格式
+     * @param timeMs 毫秒数
+     * @return 格式化后的时间字符串
+     */
     fun formatTime(timeMs: Long): String {
         if (timeMs < 0) return "00:00"
         
@@ -16,6 +25,11 @@ object TimeUtils {
         }
     }
     
+    /**
+     * 将秒数格式化为 HH:MM:SS 或 MM:SS 格式
+     * @param seconds 秒数
+     * @return 格式化后的时间字符串
+     */
     fun formatDuration(seconds: Long): String {
         if (seconds < 0) return "00:00"
         

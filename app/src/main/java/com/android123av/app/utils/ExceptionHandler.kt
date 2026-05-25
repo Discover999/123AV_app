@@ -1,11 +1,12 @@
 package com.android123av.app.utils
 
 import android.util.Log
+import com.android123av.app.constants.LogTags
 import kotlinx.coroutines.CancellationException
 
 object ExceptionHandler {
     
-    private const val TAG = "ExceptionHandler"
+    private const val TAG = LogTags.EXCEPTION
     
     private var globalExceptionHandler: ((Throwable) -> Unit)? = null
     

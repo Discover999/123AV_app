@@ -57,10 +57,6 @@ object AppConstants {
     const val SECONDS_IN_MINUTE = 60
     const val SECONDS_IN_HOUR = 3600
     
-    const val DEFAULT_CACHE_SIZE = 50
-    const val DEFAULT_HTTP_CACHE_SIZE_MB = 50
-    const val DEFAULT_CONNECTION_POOL_SIZE = 10
-    
     const val DEFAULT_TIMEOUT_MS = 15000L
     const val FAST_TIMEOUT_MS = 12000L
     const val SHORT_TIMEOUT_MS = 3000L
