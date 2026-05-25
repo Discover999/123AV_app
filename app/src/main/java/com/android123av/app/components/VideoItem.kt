@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,6 +24,7 @@ import coil.compose.AsyncImage
 import com.android123av.app.models.Video
 import com.android123av.app.models.Actress
 import com.android123av.app.models.Series
+import com.android123av.app.utils.HapticUtils
 
 @Composable
 fun VideoItem(
@@ -30,10 +32,15 @@ fun VideoItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable {
+                HapticUtils.vibrateClick(context)
+                onClick()
+            }
             .shadow(
                 elevation = 4.dp,
                 shape = RoundedCornerShape(16.dp),
@@ -54,11 +61,13 @@ fun VideoItem(
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
-                    contentDescription = video.title,
+                    contentDescription = "${video.title}, 时长 ${video.duration.ifEmpty { "未知" }}",
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                    error = ColorPainter(Color.Gray)
                 )
                 
                 Box(
@@ -124,10 +133,15 @@ fun ActressCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable {
+                HapticUtils.vibrateClick(context)
+                onClick()
+            }
             .shadow(
                 elevation = 4.dp,
                 shape = RoundedCornerShape(16.dp),
@@ -148,11 +162,13 @@ fun ActressCard(
             ) {
                 AsyncImage(
                     model = actress.avatarUrl,
-                    contentDescription = actress.name,
+                    contentDescription = "${actress.name}, 作品数量 ${actress.videoCount} 部",
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                    error = ColorPainter(Color.Gray)
                 )
                 
                 Box(
@@ -201,10 +217,15 @@ fun VideoCardGridItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable {
+                HapticUtils.vibrateClick(context)
+                onClick()
+            },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -219,11 +240,13 @@ fun VideoCardGridItem(
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
-                    contentDescription = video.title,
+                    contentDescription = "${video.title}, 时长 ${video.duration.ifEmpty { "--:--" }}",
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                    error = ColorPainter(Color.Gray)
                 )
                 
                 Box(
@@ -309,6 +332,8 @@ fun SeriesCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     AnimatedVisibility(
         visible = true,
         enter = fadeIn(animationSpec = tween(200)) +
@@ -321,7 +346,10 @@ fun SeriesCard(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick),
+                .clickable {
+                    HapticUtils.vibrateClick(context)
+                    onClick()
+                },
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant

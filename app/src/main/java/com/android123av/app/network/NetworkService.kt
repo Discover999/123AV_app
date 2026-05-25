@@ -9,6 +9,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import com.android123av.app.models.*
 import com.android123av.app.constants.AppConstants
@@ -118,11 +119,11 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
     if (cachedUrl != null) {
         return@withContext cachedUrl
     }
-    
+
     val isFavorite = videoId.startsWith("fav_")
-    
+
     var finalResult: String? = null
-    
+
     try {
         withTimeout(timeoutMs) {
             coroutineScope {
@@ -137,7 +138,7 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
                         }
                     }
                 }
-                
+
                 val webViewDeferred = async {
                     try {
                         fetchM3u8UrlWithWebViewFast(context, videoId)
@@ -145,14 +146,14 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
                         null
                     }
                 }
-                
+
                 val result = try {
                     select<Pair<String?, String?>> {
-                        httpDeferred.onAwait { httpResult -> 
-                            Pair(httpResult, "HTTP") 
+                        httpDeferred.onAwait { httpResult ->
+                            Pair(httpResult, "HTTP")
                         }
-                        webViewDeferred.onAwait { webViewResult -> 
-                            Pair(webViewResult, "WebView") 
+                        webViewDeferred.onAwait { webViewResult ->
+                            Pair(webViewResult, "WebView")
                         }
                     }
                 } catch (e: Exception) {
@@ -160,7 +161,7 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
                     val webViewResult = try { webViewDeferred.await() } catch (e: Exception) { null }
                     Pair(httpResult ?: webViewResult, "Fallback")
                 }
-                
+
                 finalResult = result.first
             }
         }
@@ -169,11 +170,11 @@ suspend fun fetchVideoUrlParallel(context: android.content.Context, videoId: Str
     } catch (e: Exception) {
         finalResult = tryFetchWithFallback(context, videoId, isFavorite)
     }
-    
+
     finalResult?.let { url ->
         cacheVideoUrl(videoId, url)
     }
-    
+
     finalResult
 }
 
@@ -193,20 +194,20 @@ private fun fetchVideoUrlSync(videoId: String): String? {
     if (videoId.isBlank() || videoId.startsWith("fav_")) {
         return null
     }
-    
+
     val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
-    
+
     val request = Request.Builder()
         .url(videoDetailUrl)
         .headers(commonHeaders())
         .build()
-    
+
     return try {
         val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             val doc = Jsoup.parse(html)
-            
+
             val videoElement = doc.selectFirst("video")
             if (videoElement != null) {
                 val videoUrl = videoElement.attr("src")
@@ -214,7 +215,7 @@ private fun fetchVideoUrlSync(videoId: String): String? {
                     return videoUrl
                 }
             }
-            
+
             val scriptElements = doc.select("script")
             for (script in scriptElements) {
                 val scriptContent = script.data()
@@ -226,7 +227,7 @@ private fun fetchVideoUrlSync(videoId: String): String? {
                     }
                 }
             }
-            
+
             null
         } else {
             null
@@ -240,10 +241,10 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
     if (videoId.isBlank()) {
         return@withContext null
     }
-    
+
     val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
     val result = CompletableDeferred<String?>()
-    
+
     // 使用共享的 WebView 避免每次创建/销毁导致的冷启动延迟
     try {
         val foundResult = AtomicBoolean(false)
@@ -312,7 +313,7 @@ suspend fun fetchM3u8UrlWithWebViewFast(context: android.content.Context, videoI
     } catch (e: Exception) {
         if (!result.isCompleted) result.complete(null)
     }
-    
+
     result.await()
 }
 
@@ -320,11 +321,11 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
     if (videoId.isBlank()) {
         return@withContext emptyList()
     }
-    
+
     val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
     val result = CompletableDeferred<List<VideoPart>>()
     val partsList = mutableListOf<VideoPart>()
-    
+
     withContext(Dispatchers.Main) {
         var webView: WebView? = null
         var timeoutHandler: Handler? = null
@@ -334,7 +335,7 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
         var totalParts = 0
         var isProcessing = false
         var isDestroyed = false
-        
+
         fun cleanup() {
             if (isDestroyed) return
             isDestroyed = true
@@ -346,27 +347,27 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                 }
             }
         }
-        
+
         try {
             if (context is Activity && context.isFinishing) {
                 result.complete(emptyList())
                 return@withContext
             }
-            
+
             webView = WebView(context)
             val currentWebView = webView ?: return@withContext
-            
+
             configureWebView(currentWebView)
-            
+
             currentWebView.webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
-                    
+
                     if (isProcessing) return
-                    
+
                     Handler(Looper.getMainLooper()).postDelayed({
                         if (isProcessing || isDestroyed) return@postDelayed
-                        
+
                         val script = """
                             (function() {
                                 const parts = [];
@@ -380,37 +381,37 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                                 return JSON.stringify(parts);
                             })();
                         """.trimIndent()
-                        
+
                         currentWebView.evaluateJavascript(script) { value ->
                             if (isDestroyed) return@evaluateJavascript
-                            
+
                             if (value == null || value == "null") {
                                 result.complete(emptyList())
                                 cleanup()
                                 return@evaluateJavascript
                             }
-                            
+
                             var partsJson = value.trim()
                             if (partsJson.startsWith("\"") && partsJson.endsWith("\"")) {
                                 partsJson = partsJson.substring(1, partsJson.length - 1)
                             }
-                            
+
                             partsJson = partsJson.replace("\\\"", "\"")
-                            
+
                             try {
                                 val gson = Gson()
                                 val jsonArray = com.google.gson.JsonParser.parseString(partsJson).asJsonArray
                                 totalParts = jsonArray.size()
-                                
+
                                 if (totalParts > 0) {
                                     isProcessing = true
-                                    
+
                                     jsonArray.forEach { element ->
                                         val jsonObj = element.asJsonObject
                                         val partName = jsonObj.get("name")?.asString ?: ""
                                         partsList.add(VideoPart(partName, null))
                                     }
-                                    
+
                                     clickNextPartByIndex(currentWebView, 0, partsList, result, foundResult, ::cleanup)
                                 } else {
                                     result.complete(emptyList())
@@ -423,32 +424,32 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                         }
                     }, AppConstants.SHORT_TIMEOUT_MS)
                 }
-                
+
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val url = request.url.toString()
-                    
+
                     if (!isProcessing || foundResult.get() || result.isCompleted) {
                         return super.shouldInterceptRequest(view, request)
                     }
-                    
+
                     val urlLower = url.lowercase()
-                    val isVideoFile = urlLower.endsWith(".m3u8") || 
-                                     urlLower.endsWith(".mp4") || 
+                    val isVideoFile = urlLower.endsWith(".m3u8") ||
+                                     urlLower.endsWith(".mp4") ||
                                      urlLower.endsWith(".mpd") ||
                                      urlLower.contains(".m3u8?") ||
                                      urlLower.contains(".mp4?") ||
                                      urlLower.contains(".mpd?")
-                    
+
                     if (isVideoFile && currentPartIndex < totalParts) {
                         val partName = partsList[currentPartIndex].name
-                        
-                        val isMainVideo = urlLower.contains("/video.m3u8") || 
+
+                        val isMainVideo = urlLower.contains("/video.m3u8") ||
                                         urlLower.contains("/video.mp4") ||
                                         (!urlLower.contains("/qa/") && !urlLower.contains("/hq/") && !urlLower.contains("/sq/"))
-                        
+
                         if (isMainVideo) {
                             partsList[currentPartIndex] = VideoPart(partName, url)
-                            
+
                             Handler(Looper.getMainLooper()).postDelayed({
                                 currentPartIndex++
                                 if (currentPartIndex >= totalParts) {
@@ -461,11 +462,11 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                             }, AppConstants.VERY_SHORT_TIMEOUT_MS)
                         }
                     }
-                    
+
                     return super.shouldInterceptRequest(view, request)
                 }
             }
-            
+
             timeoutHandler = Handler(context.mainLooper)
             timeoutRunnable = Runnable {
                 if (!result.isCompleted) {
@@ -474,16 +475,16 @@ suspend fun fetchAllVideoParts(context: android.content.Context, videoId: String
                     cleanup()
                 }
             }
-            
+
             timeoutHandler.postDelayed(timeoutRunnable, AppConstants.LONG_TIMEOUT_MS)
-            
+
             currentWebView.loadUrl(videoDetailUrl)
-            
+
         } catch (e: Exception) {
             if (!result.isCompleted) result.complete(emptyList())
         }
     }
-    
+
     result.await()
 }
 
@@ -499,17 +500,17 @@ private fun clickNextPart(
         cleanup()
         return
     }
-    
+
     val currentIndex = partsList.size
-    
+
     if (currentIndex >= partsArray.size) {
         return
     }
-    
+
     val partInfo = partsArray[currentIndex]
     val partName = partInfo["name"]?.toString() ?: (currentIndex + 1).toString()
     partsList.add(VideoPart(partName, null))
-    
+
     val script = """
         (function() {
             const scenes = document.querySelectorAll('#scenes a');
@@ -520,7 +521,7 @@ private fun clickNextPart(
             return false;
         })();
     """.trimIndent()
-    
+
     webView.evaluateJavascript(script) { value ->
         if (value == "false") {
             foundResult.set(true)
@@ -542,11 +543,11 @@ private fun clickNextPartByIndex(
         cleanup()
         return
     }
-    
+
     if (index >= partsList.size) {
         return
     }
-    
+
     val script = """
         (function() {
             const scenes = document.querySelectorAll('#scenes a');
@@ -557,7 +558,7 @@ private fun clickNextPartByIndex(
             return false;
         })();
     """.trimIndent()
-    
+
     webView.evaluateJavascript(script) { value ->
         if (value == "false") {
             foundResult.set(true)
@@ -660,20 +661,20 @@ private fun buildPaginatedUrl(baseUrl: String, page: Int): String {
 suspend fun login(username: String, password: String): LoginResponse = withContext(Dispatchers.IO) {
     val loginUrl = SiteManager.buildZhUrl("ajax/user/signin")
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
-    
+
     val requestBody = FormBody.Builder()
         .add("username", username)
         .add("password", password)
         .add("remember_me", "1")
         .build()
-    
+
     val request = Request.Builder()
         .url(loginUrl)
         .post(requestBody)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .headers(apiHeaders("$currentBaseUrl/"))
         .build()
-    
+
     try {
         val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
@@ -709,22 +710,22 @@ suspend fun resetPassword(
 ): ResetPasswordResponse = withContext(Dispatchers.IO) {
     val resetUrl = SiteManager.buildZhUrl("ajax/user/reset")
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
-    
+
     val requestJson = gson.toJson(mapOf(
         "username" to username,
         "email" to email,
         "password" to newPassword,
         "password_confirmation" to confirmPassword
     ))
-    
+
     val requestBody = requestJson.toRequestBody("application/json".toMediaType())
-    
+
     val request = Request.Builder()
         .url(resetUrl)
         .post(requestBody)
         .headers(apiHeaders("$currentBaseUrl/"))
         .build()
-    
+
     try {
         val response = getOkHttpClient().newCall(request).execute()
         val responseBody = response.body?.string() ?: ""
@@ -745,12 +746,12 @@ suspend fun resetPassword(
 suspend fun fetchUserInfo(): UserInfoResponse = withContext(Dispatchers.IO) {
     val userInfoUrl = SiteManager.buildZhUrl("ajax/user/info")
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
-    
+
     val request = Request.Builder()
         .url(userInfoUrl)
         .headers(apiHeaders("$currentBaseUrl/"))
         .build()
-    
+
     try {
         val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
@@ -788,7 +789,7 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
         .post(requestBody)
         .headers(apiHeaders("$currentBaseUrl/"))
         .build()
-    
+
     try {
         val response = getOkHttpClient().newCall(request).execute()
         if (response.isSuccessful) {
@@ -818,9 +819,9 @@ suspend fun editUserProfile(username: String, email: String): EditProfileRespons
 
 suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<Video>, String> = withContext(Dispatchers.IO) {
     val fullUrl = buildPaginatedUrl(url, page)
-    
+
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
-    
+
     val request = Request.Builder()
         .url(fullUrl)
         .headers(commonHeaders())
@@ -831,7 +832,7 @@ suspend fun fetchVideosDataWithResponse(url: String, page: Int = 1): Pair<List<V
 
     try {
         val response = getOkHttpClient().newCall(request).execute()
-        
+
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             val (videos, _) = parseVideosFromHtml(html)
@@ -854,20 +855,20 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
         if (videoId.isBlank() || videoId.startsWith("fav_")) {
             return@withContext null
         }
-        
+
         val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
-        
+
         val request = Request.Builder()
             .url(videoDetailUrl)
             .headers(commonHeaders())
             .build()
-        
+
         val response = getOkHttpClient().newCall(request).execute()
-        
+
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             val doc = Jsoup.parse(html)
-            
+
             val videoElement = doc.selectFirst("video")
             if (videoElement != null) {
                 val videoUrl = videoElement.attr("src")
@@ -875,12 +876,12 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
                     return@withContext videoUrl
                 }
             }
-            
+
             val iframeElement = doc.selectFirst("iframe[src*='video']")
             if (iframeElement != null) {
                 return@withContext iframeElement.attr("src")
             }
-            
+
             val scriptElements = doc.select("script")
             for (script in scriptElements) {
                 val scriptContent = script.data()
@@ -895,11 +896,11 @@ suspend fun fetchVideoUrl(videoId: String): String? = withContext(Dispatchers.IO
         }
     } catch (e: Exception) {
     }
-    
+
     return@withContext null
 }
 
-suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: String): String? = 
+suspend fun fetchM3u8UrlWithWebView(context: android.content.Context, videoId: String): String? =
     fetchM3u8UrlWithWebViewFast(context, videoId, AppConstants.FAST_TIMEOUT_MS)
 
 fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
@@ -910,40 +911,40 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
 
     videoElements.forEachIndexed { index, element ->
         val thumbnailUrl = element.select("div.thumb img.lazyload").attr("data-src")
-        
+
         val title = element.select("div.detail a").text() ?: "未知标题"
-        
+
         val duration = element.select("div.duration").text() ?: ""
-        
+
         val href = element.select("div.detail a").attr("href")
         val rawId = if (href.contains("/")) href.substringAfterLast("/") else href
         val id = rawId.ifEmpty { "video_${System.currentTimeMillis()}_$index" }
-        
+
         val favouriteElement = element.select("div.favourite").firstOrNull()
         val favouriteCount = favouriteElement?.let { el ->
             val vScope = el.attr("v-scope") ?: ""
             val regex = Regex("Favourite\\('movie',\\s*(\\d+),")
             regex.find(vScope)?.groupValues?.get(1)?.toIntOrNull() ?: 0
         } ?: 0
-        
+
         videos.add(Video(id, title, duration, thumbnailUrl, favouriteCount = favouriteCount))
     }
 
     if (videos.isEmpty()) {
         return Pair(emptyList(), PaginationInfo(1, 1, false, false))
     }
-    
+
     val paginationInfo = parsePaginationInfo(doc)
-    
+
     return Pair(videos, paginationInfo)
 }
 
  suspend fun searchVideos(query: String, page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
     if (query.isBlank()) return@withContext Pair(emptyList(), PaginationInfo(1, 1, false, false))
-    
+
     val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
     val searchUrl = SiteManager.buildZhUrl("search?keyword=$encodedQuery")
-    
+
     fetchVideosDataWithResponse(searchUrl, page).let { (videos, html) ->
         val paginationInfo = if (html.isNotEmpty()) {
             parsePaginationInfo(Jsoup.parse(html))
@@ -957,17 +958,17 @@ fun parseVideosFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
 suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo> = withContext(Dispatchers.IO) {
     val currentBaseUrl = SiteManager.getCurrentBaseUrl()
     val favoritesUrl = SiteManager.buildZhUrl("user/collection?page=$page")
-    
+
     val request = Request.Builder()
         .url(favoritesUrl)
         .headers(commonHeaders())
         .header("Referer", "$currentBaseUrl/")
         .header("Origin", currentBaseUrl)
         .build()
-    
+
     try {
         val response = getOkHttpClient().newCall(request).execute()
-        
+
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             val (videos, pagination) = parseFavoritesFromHtml(html)
@@ -982,28 +983,28 @@ suspend fun fetchUserFavorites(page: Int = 1): Pair<List<Video>, PaginationInfo>
 
 fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
     val videos = mutableListOf<Video>()
-    
+
     try {
         val doc = org.jsoup.Jsoup.parse(html)
-        
+
         val videoElements = doc.select("div.box-item")
-        
+
         videoElements.forEachIndexed { index, element ->
             try {
                 val titleElement = element.select("div.detail a").first()
                 val title = titleElement?.text() ?: ""
-                
+
                 val imgElement = element.select("img").first()
                 val thumbnailUrl = imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: ""
-                
+
                 val durationElement = element.select("div.duration").first()
                 val duration = durationElement?.text() ?: "00:00"
-                
+
                 val href = element.select("div.detail a").attr("href")
-                
+
                 val rawVideoId = if (href.contains("/")) href.substringAfterLast("/") else href
                 val videoId = rawVideoId.ifEmpty { "fav_${System.currentTimeMillis()}_$index" }
-                
+
                 if (title.isNotBlank()) {
                     videos.add(Video(
                         id = videoId,
@@ -1016,11 +1017,11 @@ fun parseFavoritesFromHtml(html: String): Pair<List<Video>, PaginationInfo> {
             } catch (_: Exception) {
             }
         }
-        
+
         val paginationInfo = parsePaginationInfo(doc)
-        
+
         return Pair(videos, paginationInfo)
-        
+
     } catch (e: Exception) {
         return Pair(emptyList(), PaginationInfo(1, 1, false, false))
     }
@@ -1045,7 +1046,7 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
 
     val titleElement = doc.selectFirst("div.title h2")
     var categoryTitle = titleElement?.text() ?: ""
-    
+
     if (categoryTitle.isEmpty()) {
         val h1Element = doc.selectFirst("h1")
         categoryTitle = h1Element?.text() ?: ""
@@ -1061,12 +1062,12 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     val totalResults = totalResultsText.toIntOrNull() ?: 0
 
     val currentSort = doc.selectFirst("div.dropdown.show span.text-muted + span")?.text() ?: ""
-    
+
     val actressDetail = try {
         val actressDetailElement = doc.selectFirst("div.detail.ml-4.text-left.title")
         val avatarElement = doc.selectFirst("div.avatar img")
         val avatarUrl = avatarElement?.attr("src")?.trim() ?: ""
-        
+
         if (actressDetailElement != null) {
             val name = actressDetailElement.selectFirst("h3")?.text()?.trim() ?: ""
             val textMutedElements = actressDetailElement.select("div.text-muted")
@@ -1074,7 +1075,7 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
             var height = ""
             var measurements = ""
             var videoCountActress = 0
-            
+
             textMutedElements.forEachIndexed { index, element ->
                 val text = element.text().trim()
                 if (text.contains("岁")) {
@@ -1092,7 +1093,7 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
                     videoCountActress = countText.toIntOrNull() ?: 0
                 }
             }
-            
+
             if (name.isNotEmpty()) {
                 com.android123av.app.models.ActressDetail(name, avatarUrl, birthday, height, measurements, videoCountActress)
             } else {
@@ -1104,14 +1105,14 @@ fun parsePaginationInfo(doc: Document): PaginationInfo {
     } catch (e: Exception) {
         null
     }
-    
+
     val sortOptions = mutableListOf<com.android123av.app.models.SortOption>()
-    
+
     val sortDropdowns = doc.select("div.dropdown-menu")
     for (sortDropdown in sortDropdowns) {
         val dropdownParent = sortDropdown.parent()
         val dropdownLabel = dropdownParent?.select("span.text-muted")?.firstOrNull()?.text() ?: ""
-        
+
         if (dropdownLabel.contains("排序方式")) {
             val sortItems = sortDropdown.select("a.dropdown-item")
             sortItems.forEach { item ->
@@ -1146,7 +1147,9 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
     try {
         val currentBaseUrl = SiteManager.getCurrentBaseUrl()
         val videoDetailUrl = SiteManager.buildZhUrl("v/$videoId")
-        
+
+        Log.d("VideoDetails", "🔗 访问视频详情页: $videoDetailUrl")
+
         val request = Request.Builder()
             .url(videoDetailUrl)
             .header("User-Agent", USER_AGENT)
@@ -1155,9 +1158,9 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
             .header("Referer", "$currentBaseUrl/")
             .header("Origin", currentBaseUrl)
             .build()
-        
+
         val response = getOkHttpClient().newCall(request).execute()
-        
+
         if (response.isSuccessful) {
             val html = response.body?.string() ?: ""
             return@withContext parseVideoDetails(html)
@@ -1172,14 +1175,14 @@ suspend fun fetchVideoDetails(videoId: String): VideoDetails? = withContext(Disp
 suspend fun fetchFavouriteStatus(videoId: String): Boolean = withContext(Dispatchers.IO) {
     try {
         val favouriteStatusUrl = SiteManager.buildZhUrl("ajax/user/favourite/status?type=movie&id=$videoId")
-        
+
         val request = Request.Builder()
             .url(favouriteStatusUrl)
             .headers(apiHeaders(SiteManager.buildZhUrl("v/$videoId")))
             .build()
-        
+
         val response = getOkHttpClient().newCall(request).execute()
-        
+
         if (response.isSuccessful) {
             val responseBody = response.body?.string() ?: ""
             val gson = Gson()
@@ -1198,19 +1201,19 @@ suspend fun toggleFavourite(videoId: String, isAdd: Boolean): Boolean = withCont
     try {
         val favouriteUrl = SiteManager.buildZhUrl("ajax/user/favourite")
         val action = if (isAdd) "add" else "remove"
-        
+
         val formBody = FormBody.Builder()
             .add("action", action)
             .add("type", "movie")
             .add("id", videoId)
             .build()
-        
+
         val request = Request.Builder()
             .url(favouriteUrl)
             .headers(apiHeaders(SiteManager.buildZhUrl("v/$videoId")))
             .post(formBody)
             .build()
-        
+
         val response = getOkHttpClient().newCall(request).execute()
         return@withContext response.isSuccessful
     } catch (e: Exception) {
@@ -1226,7 +1229,7 @@ suspend fun fetchNavigationMenu(): Pair<List<com.android123av.app.models.MenuSec
                 .url(url)
                 .headers(commonHeaders())
                 .build()
-            
+
             val response = getOkHttpClient().newCall(request).execute()
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
@@ -1262,14 +1265,14 @@ suspend fun fetchActresses(url: String, page: Int = 1): Pair<List<com.android123
     return withContext(Dispatchers.IO) {
         try {
             val fullUrl = buildPaginatedUrl(url, page)
-            
+
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
-            
+
             val response = getOkHttpClient().newCall(request).execute()
-            
+
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
                 return@withContext parseActressesFromHtml(html)
@@ -1286,14 +1289,14 @@ suspend fun fetchSeries(url: String, page: Int = 1): Pair<List<com.android123av.
     return withContext(Dispatchers.IO) {
         try {
             val fullUrl = buildPaginatedUrl(url, page)
-            
+
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
-            
+
             val response = getOkHttpClient().newCall(request).execute()
-            
+
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
                 return@withContext parseSeriesFromHtml(html, fullUrl)
@@ -1310,14 +1313,14 @@ suspend fun fetchGenres(url: String, page: Int = 1): Pair<List<com.android123av.
     return withContext(Dispatchers.IO) {
         try {
             val fullUrl = buildPaginatedUrl(url, page)
-            
+
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
-            
+
             val response = getOkHttpClient().newCall(request).execute()
-            
+
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
                 return@withContext parseGenresFromHtml(html, fullUrl)
@@ -1334,14 +1337,14 @@ suspend fun fetchStudios(url: String, page: Int = 1): Pair<List<com.android123av
     return withContext(Dispatchers.IO) {
         try {
             val fullUrl = buildPaginatedUrl(url, page)
-            
+
             val request = Request.Builder()
                 .url(fullUrl)
                 .headers(commonHeaders())
                 .build()
-            
+
             val response = getOkHttpClient().newCall(request).execute()
-            
+
             if (response.isSuccessful) {
                 val html = response.body?.string() ?: ""
                 return@withContext parseStudiosFromHtml(html, fullUrl)

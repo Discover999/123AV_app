@@ -2,6 +2,7 @@ package com.android123av.app.utils
 
 import android.util.Log
 import com.android123av.app.constants.LogTags
+import com.android123av.app.models.ErrorType
 import kotlinx.coroutines.CancellationException
 
 object ExceptionHandler {
@@ -120,26 +121,21 @@ object ExceptionHandler {
     }
     
     fun getErrorMessage(throwable: Throwable): String {
-        return when (throwable) {
-            is java.net.UnknownHostException -> "网络连接失败，请检查网络设置"
-            is java.net.SocketTimeoutException -> "连接超时，请重试"
-            is java.net.ConnectException -> "无法连接到服务器"
-            is java.io.IOException -> "网络错误: ${throwable.message}"
-            is kotlinx.coroutines.TimeoutCancellationException -> "操作超时"
-            else -> throwable.message ?: "发生未知错误"
-        }
+        return ErrorType.fromThrowable(throwable).getMessage()
+    }
+    
+    fun getErrorType(throwable: Throwable): ErrorType {
+        return ErrorType.fromThrowable(throwable)
     }
     
     fun isNetworkError(throwable: Throwable): Boolean {
-        return throwable is java.net.UnknownHostException ||
-                throwable is java.net.SocketTimeoutException ||
-                throwable is java.net.ConnectException ||
-                throwable is java.io.IOException
+        val errorType = getErrorType(throwable)
+        return errorType is ErrorType.NetworkError || errorType is ErrorType.TimeoutError
     }
     
     fun isTimeoutError(throwable: Throwable): Boolean {
-        return throwable is java.net.SocketTimeoutException ||
-                throwable is kotlinx.coroutines.TimeoutCancellationException
+        val errorType = getErrorType(throwable)
+        return errorType is ErrorType.TimeoutError
     }
 }
 
